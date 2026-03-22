@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-public struct Hello {
-  public private(set) var greeting = "Hello, World!"
-
-  public init() {}
-
-  public func sayHello() -> String {
-    return greeting
-  }
+module rust_auth_coreFFI {
+    header "rust_auth_coreFFI.h"
+    export *
 }

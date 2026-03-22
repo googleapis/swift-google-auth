@@ -26,7 +26,19 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-format", from: "602.0.0")
     ],
     targets: [
-        .target(name: "GoogleCloudAuth"),
+        .target(name: "GoogleCloudAuth", dependencies: ["RustAuthCoreBridge"]),
+        .target(
+            name: "RustAuthCoreBridge",
+            dependencies: ["RustAuthCoreFFI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .target(
+            name: "RustAuthCoreFFI",
+            linkerSettings: [
+                .linkedLibrary("rust_auth_core"),
+                .unsafeFlags(["-L", "\(Context.packageDirectory)/rust_auth_core/target/release"]),
+            ]
+        ),
         .testTarget(
             name: "FirstTest",
             dependencies: ["GoogleCloudAuth"]),

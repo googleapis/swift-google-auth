@@ -16,7 +16,9 @@ import Testing
 
 @testable import GoogleCloudAuth
 
-@Test func greeting() throws {
-  let lib = Hello()
-  #expect(lib.sayHello() == "Hello, World!")
+@Test func authAnonymousHeaders() async throws {
+    let credentials = Credentials.anonymous()
+    let headers = try await credentials.headers()
+    // Anonymous credentials typically return empty headers or don't fail during retrieval.
+    #expect(headers.isEmpty)
 }
