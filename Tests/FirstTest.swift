@@ -17,6 +17,6 @@ import Testing
 @testable import GoogleCloudAuth
 
 @Test func greeting() throws {
-    let lib = Hello()
-    #expect(lib.sayHello() == "Hello, World!")
+  let lib = Hello()
+  #expect(lib.sayHello() == "Hello, World!")
 }

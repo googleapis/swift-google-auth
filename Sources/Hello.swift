@@ -13,11 +13,11 @@
 // limitations under the License.
 
 public struct Hello {
-    public private(set) var greeting = "Hello, World!"
+  public private(set) var greeting = "Hello, World!"
 
-    public init() {}
+  public init() {}
 
-    public func sayHello() -> String {
-        return greeting
-    }
+  public func sayHello() -> String {
+    return greeting
+  }
 }
