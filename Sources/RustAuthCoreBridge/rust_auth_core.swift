@@ -440,9 +440,7 @@ private struct FfiConverterString: FfiConverter {
 }
 
 public protocol CredentialsProtocol: AnyObject {
-
   func headers() async throws -> [HeaderField]
-
 }
 
 open class Credentials:
@@ -526,14 +524,12 @@ open class Credentials:
         errorHandler: FfiConverterTypeAuthError.lift
       )
   }
-
 }
 
 #if swift(>=5.8)
   @_documentation(visibility: private)
 #endif
 public struct FfiConverterTypeCredentials: FfiConverter {
-
   typealias FfiType = UnsafeMutableRawPointer
   typealias SwiftType = Credentials
 
@@ -641,7 +637,6 @@ public func FfiConverterTypeHeaderField_lower(_ value: HeaderField) -> RustBuffe
 }
 
 public enum AuthError {
-
   case CreateHeaders(
     String
   )
@@ -662,7 +657,6 @@ public struct FfiConverterTypeAuthError: FfiConverterRustBuffer {
   public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AuthError {
     let variant: Int32 = try readInt(&buf)
     switch variant {
-
     case 1:
       return .CreateHeaders(
         try FfiConverterString.read(from: &buf)
@@ -682,7 +676,6 @@ public struct FfiConverterTypeAuthError: FfiConverterRustBuffer {
 
   public static func write(_ value: AuthError, into buf: inout [UInt8]) {
     switch value {
-
     case .CreateHeaders(let v1):
       writeInt(&buf, Int32(1))
       FfiConverterString.write(v1, into: &buf)
@@ -694,7 +687,6 @@ public struct FfiConverterTypeAuthError: FfiConverterRustBuffer {
     case .Initialize(let v1):
       writeInt(&buf, Int32(3))
       FfiConverterString.write(v1, into: &buf)
-
     }
   }
 }
