@@ -22,11 +22,12 @@ crate-type = ["cdylib", "staticlib"]
 name       = "rust_auth_core"
 
 [dependencies]
-uniffi            = { version = "0.28.0", features = ["cli", "tokio"] }
+# We need to pin this dependency to make the `.swift` output file reproducible.
+uniffi            = { version = "=0.31.0", features = ["cli", "tokio"] }
 thiserror         = "1.0"
 google-cloud-auth = "1.7.0"
 http              = "1.4.0"
 tokio             = { version = "1.0", features = ["rt-multi-thread"] }
 
 [build-dependencies]
-uniffi = { version = "0.28.0", features = ["build"] }
+uniffi = { version = "=0.31.0", features = ["build"] }
