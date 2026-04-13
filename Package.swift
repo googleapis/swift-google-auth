@@ -36,7 +36,7 @@ let package = Package(
       name: "RustAuthCoreFFI",
       linkerSettings: [
         .linkedLibrary("rust_auth_core"),
-        .unsafeFlags(["-L", "\(Context.packageDirectory)/rust_auth_core/target/release"]),
+        .unsafeFlags(["-L", "\(Context.packageDirectory)/../../target/release"]),
       ]
     ),
     .testTarget(

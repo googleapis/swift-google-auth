@@ -13,9 +13,15 @@
 # limitations under the License.
 
 [package]
-name    = "rust_auth_core"
-version = "0.1.0"
-edition = "2024"
+name                   = "rust_auth_core"
+version                = "0.1.0"
+authors.workspace      = true
+categories.workspace   = true
+edition.workspace      = true
+keywords.workspace     = true
+license.workspace      = true
+repository.workspace   = true
+rust-version.workspace = true
 
 [lib]
 crate-type = ["staticlib"]
@@ -23,11 +29,11 @@ name       = "rust_auth_core"
 
 [dependencies]
 # We need to pin this dependency to make the `.swift` output file reproducible.
-uniffi            = { version = "=0.31.0", features = ["cli", "tokio"] }
-thiserror         = "1.0"
-google-cloud-auth = "1.7.0"
-http              = "1.4.0"
-tokio             = { version = "1.0", features = ["rt-multi-thread"] }
+uniffi            = { workspace = true, features = ["cli", "tokio"] }
+thiserror         = { workspace = true }
+google-cloud-auth = { workspace = true, features = ["default-rustls-provider"] }
+http              = { workspace = true }
+tokio             = { workspace = true, features = ["rt-multi-thread"] }
 
 [build-dependencies]
-uniffi = { version = "=0.31.0", features = ["build"] }
+uniffi = { workspace = true, features = ["build"] }
