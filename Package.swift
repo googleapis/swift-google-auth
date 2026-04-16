@@ -40,7 +40,8 @@ let package = Package(
       ]
     ),
     .testTarget(
-      name: "FirstTest",
-      dependencies: ["GoogleCloudAuth"]),
+      name: "GoogleCloudAuthTests",
+      dependencies: ["GoogleCloudAuth"],
+      path: "Tests"),
   ]
 )
