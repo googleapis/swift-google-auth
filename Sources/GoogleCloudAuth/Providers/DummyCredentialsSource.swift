@@ -12,15 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Testing
+import Foundation
 
-@testable import GoogleCloudAuth
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
 
-@Suite struct CredentialsTests {
-  @Test func authAnonymousHeaders() async throws {
-    let credentials = Credentials.anonymous()
-    let headers = try await credentials.headers()
-    // Anonymous credentials typically return empty headers or don't fail during retrieval.
-    #expect(headers.isEmpty)
+/// An experimental empty skeleton provider backing the Swift-native core shell.
+struct DummyCredentialsSource: CredentialsSource {
+  let configuration: CredentialsConfiguration
+
+  func headers() async throws -> AuthHeaders {
+    // Dummy empty implementation for skeleton phase
+    return []
+  }
+
+  func universeDomain() async -> String? {
+    return nil
   }
 }
