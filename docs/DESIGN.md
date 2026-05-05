@@ -272,6 +272,9 @@ This internal client encapsulates the following networking policies:
 -   **Generic Decoding**: Decodes generic JSON responses using a default
     `JSONDecoder` configured with a `.convertFromSnakeCase` key decoding
     strategy.
+-   **Plain-Text Support**: Supports retrieving raw UTF-8 string responses
+    (bypassing JSON decoding) to accommodate GCE Metadata Server endpoints
+    (like ID tokens and emails) that return plain text.
 
 --------------------------------------------------------------------------------
 
