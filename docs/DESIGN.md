@@ -333,6 +333,9 @@ specifications exactly:
     time after each failed attempt, e.g., 1.0s, 2.0s, 4.0s).
 -   **Maximum Delay Cap**: Caps the maximum backoff delay at **60.0 seconds** to
     prevent excessive delays on long retry loops.
+-   **Full Jitter**: Applies a random jitter factor between `0.0` and `1.0`
+    to the calculated backoff delay before sleeping, preventing thundering
+    herd problems when many clients retry simultaneously.
 -   **Provider-Specific Configurable Settings**: Supports specialized overrides
     depending on the credential provider's environment. For example, local
     Metadata Server (MDS) queries reside on the local hypervisor and require
