@@ -62,13 +62,13 @@ when building Google Cloud applications on Apple platforms and Linux.
 
 The authentication library is built around a protocol-oriented delegation model.
 The public `Credentials` type acts as the external interface and delegates all
-operations to a concrete provider resolved at initialization.
+operations to a concrete credentials source resolved at initialization.
 
 ### Public API Surface
 
 ```swift
-/// Defines the source and custom configurations for authenticating Google Cloud API requests.
-public enum CredentialSource: Sendable {
+/// Defines the configurations for authenticating Google Cloud API requests.
+public enum CredentialsConfiguration: Sendable {
   /// Automatically resolves credentials using Application Default Credentials (ADC) with optional overrides.
   ///
   /// - Parameters:
@@ -135,14 +135,14 @@ public enum CredentialSource: Sendable {
 
 /// The public entry point to authenticate Google Cloud API requests.
 public struct Credentials: Sendable {
-  /// Initializes credentials using a specific source (defaults to automatic ADC resolution).
+  /// Initializes credentials using a specific configuration (defaults to automatic ADC resolution).
   ///
-  /// - Parameter source: The credential source and configuration overrides.
+  /// - Parameter configuration: The credentials configuration overrides.
   /// - Throws: An error if loading or parsing the credentials fails.
-  public init(source: CredentialSource = .adc()) throws
+  public init(configuration: CredentialsConfiguration = .adc()) throws
 
   /// Asynchronously retrieves the request headers required to authenticate a request.
-  public func headers() async throws -> [(String, String)]
+  public func headers() async throws -> AuthHeaders
 
   /// Retrieves the universe domain associated with the credentials.
   public func universeDomain() async -> String?
@@ -157,10 +157,10 @@ library:
 ```mermaid
 graph TD
     subgraph PublicAPI ["Public API"]
-        A[Credentials] --- B[CredentialSource]
+        A[Credentials] --- B[CredentialsConfiguration]
     end
 
-    subgraph InternalImpls ["Credentials Providers"]
+    subgraph InternalImpls ["Credentials Sources"]
         C[UserCredentials]
         D[ServiceAccountCredentials]
         E[MDSCredentials]
@@ -180,22 +180,22 @@ graph TD
 
 ## 1. Public API & Protocols
 
-The library delegates credential resolution to concrete internal providers
-conforming to the `CredentialsProviding` protocol. This internal protocol
+The library delegates credential resolution to concrete internal sources
+conforming to the `CredentialsSource` protocol. This internal protocol
 handles token retrieval and formatting.
 
-HTTP headers are represented as an array of key-value tuples `[(String,
-String)]` rather than a dictionary, ensuring native support for duplicate header
-names (which HTTP permits) and full backward compatibility with the GAX package
-and test suites.
+HTTP headers are represented as `AuthHeaders` (which is a typealias for an
+array of key-value tuples `[(String, String)]`) rather than a dictionary, ensuring
+native support for duplicate header names (which HTTP permits) and full backward
+compatibility with the GAX package and test suites.
 
 ```swift
 /// A type that can provide authentication headers for Google Cloud API requests.
-protocol CredentialsProviding: Sendable {
+protocol CredentialsSource: Sendable {
   /// Asynchronously retrieves the request headers required to authenticate a request.
   ///
   /// - Returns: An array of key-value tuples representing HTTP headers.
-  func headers() async throws -> [(String, String)]
+  func headers() async throws -> AuthHeaders
 
   /// Retrieves the universe domain associated with the credentials.
   func universeDomain() async -> String?
@@ -203,15 +203,15 @@ protocol CredentialsProviding: Sendable {
 ```
 
 The public `Credentials` API signature is defined in the `# Overview` section.
-Internally, `Credentials` is backed by an instance of `CredentialsProviding`
+Internally, `Credentials` is backed by an instance of `CredentialsSource`
 resolved at load time:
 
 ```swift
 public struct Credentials: Sendable {
-  private let provider: any CredentialsProviding
+  private let credentialsSource: any CredentialsSource
 
-  internal init(provider: any CredentialsProviding) {
-    self.provider = provider
+  internal init(credentialsSource: any CredentialsSource) {
+    self.credentialsSource = credentialsSource
   }
 }
 ```
@@ -222,7 +222,7 @@ public struct Credentials: Sendable {
 
 ### A. Application Default Credentials (ADC) Resolver
 
-The `ADC` utility resolves the appropriate credential provider at
+The `ADC` utility resolves the appropriate credentials source at
 initialization, following standard search paths defined in
 [AIP-4110: Application Default Credentials](https://google.aip.dev/auth/4110):
 
@@ -231,14 +231,14 @@ initialization, following standard search paths defined in
 2.  **Well-Known Path**: `~/.config/gcloud/application_default_credentials.json`
     (or Windows equivalent).
 3.  **Lazy Metadata Server (MDS) Fallback**: If no local configuration is found,
-    defaults to an `MDSCredentials` provider. MDS availability is checked lazily
+    defaults to an `MDSCredentials` source. MDS availability is checked lazily
     at token fetch time to handle Google Compute Engine (GCE) / Google
     Kubernetes Engine (GKE) startup delays gracefully.
 
-### B. Structured Credential Providers
+### B. Structured Credentials Sources
 
-We implement three concrete, structural credential providers that satisfy
-`CredentialsProviding` to encapsulate different authentication channels:
+We implement three concrete, structural credentials sources that satisfy
+`CredentialsSource` to encapsulate different authentication channels:
 
 -   **`UserCredentials`**: Resolves and refreshes tokens using User OAuth2
     credentials JSON key data.
@@ -247,7 +247,7 @@ We implement three concrete, structural credential providers that satisfy
 -   **`MDSCredentials`**: Resolves instance credentials from the local Compute
     Engine Metadata Server.
 
-Each provider delegates actual token storage and refreshing to a shared
+Each credentials source delegates actual token storage and refreshing to a shared
 `TokenCache` actor to preserve isolation boundaries.
 
 ### C. Internal Network Client (AuthHTTPClient)
@@ -416,10 +416,8 @@ Self-Signed JWT (SSJ) direct Bearer auth because:
 
 ### Risk: Breaking Changes in Generated Client Libraries
 
--   **Risk**: Generated client targets in the mono-repo might expect specific
-    signatures.
 -   **Mitigation**: We preserve the exact interface of `Credentials` (including
-    standard initializers and returning `[(String, String)]` from `.headers()`),
+    standard initializers and returning `AuthHeaders` from `.headers()`),
     ensuring GAX `HTTPClient` and generated clients compile without manual
     modifications.
 
