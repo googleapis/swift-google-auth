@@ -12,15 +12,62 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
 import Testing
 
 @testable import GoogleCloudAuth
 
-@Suite struct CredentialsTests {
-  @Test func authAnonymousHeaders() async throws {
-    let credentials = Credentials.anonymous()
+@Suite(.serialized) struct CredentialsTests {
+  @Test func experimentalAuthBackendDefaultsToRust() {
+    // Clean any existing env var for test isolation
+    setenv("GOOGLE_CLOUD_SWIFT_EXPERIMENTAL_AUTH", "", 1)
+    unsetenv("GOOGLE_CLOUD_SWIFT_EXPERIMENTAL_AUTH")
+
+    // Verify that the default backend evaluates to "rust"
+    let envVal =
+      ProcessInfo.processInfo.environment["GOOGLE_CLOUD_SWIFT_EXPERIMENTAL_AUTH"] ?? "rust"
+    #expect(envVal == "rust")
+  }
+
+  @Test func resolveRustProviderForAnonymous() async throws {
+    // Force backend to Rust
+    Credentials.experimentalAuthBackend = "rust"
+
+    let credentials = try Credentials(configuration: .anonymous)
+
+    // Verify the backing provider is the Rust FFI wrapper
+    #expect(
+      String(describing: type(of: credentials.credentialsSource)).contains("RustCredentialsSource"))
+
     let headers = try await credentials.headers()
-    // Anonymous credentials typically return empty headers or don't fail during retrieval.
     #expect(headers.isEmpty)
+  }
+
+  @Test func resolveSwiftProviderForAnonymous() async throws {
+    // Force backend to Swift
+    Credentials.experimentalAuthBackend = "swift"
+
+    let credentials = try Credentials(configuration: .anonymous)
+
+    // Verify the backing provider is the new experimental Swift wrapper shell
+    #expect(
+      String(describing: type(of: credentials.credentialsSource)).contains("DummyCredentialsSource")
+    )
+
+    let headers = try await credentials.headers()
+    #expect(headers.isEmpty)
+
+    let ud = await credentials.universeDomain()
+    #expect(ud == nil)
+  }
+
+  @Test func resolveSwiftProviderForADC() async throws {
+    Credentials.experimentalAuthBackend = "swift"
+
+    let credentials = try Credentials(configuration: .adc)
+
+    #expect(
+      String(describing: type(of: credentials.credentialsSource)).contains("DummyCredentialsSource")
+    )
   }
 }
