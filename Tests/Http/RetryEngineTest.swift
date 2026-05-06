@@ -194,8 +194,10 @@ private actor AttemptCounter {
       }
     }
 
-    // Wait a bit to ensure it enters the first attempt and fails, then sleeps
-    try await Task.sleep(for: .seconds(0.1))
+    // Wait for the first attempt to be recorded
+    while await attempts.count < 1 {
+      try await Task.sleep(for: .seconds(0.01))
+    }
     task.cancel()
 
     await #expect(throws: CancellationError.self) {

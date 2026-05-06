@@ -284,35 +284,31 @@ To prevent data races and thundering herd problems (where concurrent
 asynchronous requests to a client library try to fetch a new token
 simultaneously), we isolate the cache state inside a Swift `actor`.
 
-To ensure high maintainability and eliminate duplicate caching bugs, the
-`TokenCache` is designed as a **single, generic, and highly reusable thread-safe
-implementation** that wraps *any* underlying credential provider conforming to
-`TokenProvider`.
+The `TokenCache` is designed as a **single, generic, and highly reusable
+thread-safe implementation** that wraps *any* underlying credential provider
+conforming to `TokenProvider`.
 
-The `TokenCache` actor encapsulates the cached token and any active asynchronous
-refresh `Task`. It implements the following lazy refresh behavior, matching the
-Rust cache specifications exactly:
+To align with the Rust implementation, the `TokenCache` uses a **proactive
+background-refresh model**:
 
--   **On-Demand Lazy Refreshing**: When a token is requested, it checks if the
-    cached token is valid. It enforces a staleness buffer of **4 minutes (240
-    seconds)**; if the cached token expires in less than 4 minutes, it is
-    considered stale and a lazy refresh is executed.
--   **Transient Sleep Periods**: If a refresh attempt fails due to a transient
-    error, it sleeps for a fixed period of **10 seconds** before the next fetch
-    attempt, preventing excessive network hammers. Using a fixed 10-second delay
-    is a well-established standard across Google Cloud client libraries
-    (matching `SHORT_REFRESH_SLACK` in Rust). It specifically handles cases like
-    serverless environments (e.g., Google Cloud Run) where the Metadata Server
-    repeatedly returns access tokens that expire in exactly 4 minutes, providing
-    a low-latency polling period to detect when longer-lived tokens become
-    available without triggering heavy exponential backoffs.
--   **Task Sharing (Concurrency Protection)**: If the token is stale or expired,
-    it checks if an asynchronous refresh task is already in progress. If so,
-    concurrent callers will `await` the *same* active task value, executing only
-    one network request.
--   **Resource Cleanliness**: Because refreshes are performed lazily and
-    on-demand, it avoids spawning persistent background loop tasks, matching the
-    Rust library's resource-friendly design perfectly.
+-   **Background Refresh Loop**: Upon initialization, the cache spawns a
+    persistent background `Task` that runs an infinite loop to actively maintain
+    token validity.
+-   **Refresh Logic**:
+    -   If the token has an expiration and it is **more than 4 minutes** in the
+        future, the background task sleeps until 4 minutes before expiration
+        (`expiry - 4 minutes`).
+    -   If the token expires in **less than 4 minutes** but more than 10
+        seconds, it sleeps for 10 seconds and tries again. This handles Metadata
+        Server edge cases where short-lived tokens are repeatedly returned.
+    -   If a fetch fails with a **transient error**, it sleeps for 10 seconds
+        and retries.
+    -   If the error is **permanent**, the loop terminates to prevent endless
+        useless polling.
+-   **Thundering Herd Protection**: Callers calling `token()` return the cached
+    token if valid and not expired. If missing or expired, they await a shared
+    active refresh task, ensuring only one network request is executed even
+    under heavy concurrent load.
 
 --------------------------------------------------------------------------------
 
