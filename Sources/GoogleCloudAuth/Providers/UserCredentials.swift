@@ -14,19 +14,16 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
-  import FoundationNetworking
-#endif
+/// Creates credentials backed by a local User OAuth2 credentials JSON key file.
+struct UserCredentials: CredentialsSource, Sendable {
+  // MARK: - CredentialsSource
 
-/// An experimental empty skeleton provider backing the Swift-native core shell.
-struct DummyCredentialsSource: CredentialsSource {
-  let configuration: CredentialsConfiguration
-
-  func headers() async throws -> AuthHeaders {
-    // Dummy empty implementation for skeleton phase
+  /// Asynchronously retrieves mock empty headers for the skeleton phase.
+  func headers() async throws -> [(String, String)] {
     return []
   }
 
+  /// Retrieves the universe domain string override.
   func universeDomain() async -> String? {
     return nil
   }

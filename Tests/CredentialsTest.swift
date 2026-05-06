@@ -51,7 +51,7 @@ import Testing
 
     // Verify the backing provider is the new experimental Swift wrapper shell
     #expect(
-      String(describing: type(of: credentials.credentialsSource)).contains("DummyCredentialsSource")
+      String(describing: type(of: credentials.credentialsSource)).contains("AnonymousCredentials")
     )
 
     let headers = try await credentials.headers()
@@ -67,7 +67,7 @@ import Testing
     let credentials = try Credentials(configuration: .adc)
 
     #expect(
-      String(describing: type(of: credentials.credentialsSource)).contains("DummyCredentialsSource")
+      String(describing: type(of: credentials.credentialsSource)).contains("MDSCredentials")
     )
   }
 }

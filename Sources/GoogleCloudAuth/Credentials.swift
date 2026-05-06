@@ -85,7 +85,11 @@ public struct Credentials: Sendable {
   private static func resolveSwiftCredentialsSource(configuration: CredentialsConfiguration) throws
     -> any CredentialsSource
   {
-    // The native Swift backend delegates to a simple dummy credentials source shell.
-    return DummyCredentialsSource(configuration: configuration)
+    switch configuration {
+    case .adc:
+      return try ADC.resolve()
+    case .anonymous:
+      return AnonymousCredentials()
+    }
   }
 }
