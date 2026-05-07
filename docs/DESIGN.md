@@ -110,8 +110,6 @@ public enum CredentialsConfiguration: Sendable {
     quotaProjectID: String? = nil
   )
 
-  /// Explicitly signs tokens locally using a Service Account JSON key file located at the specified URL.
-  case serviceAccountKeyFile(URL)
 
   /// Explicitly signs tokens locally using a Service Account JSON key in memory, with optional overrides.
   ///
