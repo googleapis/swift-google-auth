@@ -158,7 +158,7 @@ private final class MockEmptyResponseProtocol: URLProtocol {
 
     let client = AuthHTTPClient(session: self.mockSession)
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
   }
@@ -201,7 +201,7 @@ private final class MockEmptyResponseProtocol: URLProtocol {
 
     let client = AuthHTTPClient(session: self.mockSession)
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
   }
@@ -226,7 +226,7 @@ private final class MockEmptyResponseProtocol: URLProtocol {
 
     let client = AuthHTTPClient(session: self.mockSession)
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       try await client.getString(url: targetURL)
     }
   }
@@ -277,7 +277,7 @@ private final class MockEmptyResponseProtocol: URLProtocol {
 
     let client = AuthHTTPClient(session: self.mockSession)
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
   }
@@ -290,7 +290,7 @@ private final class MockEmptyResponseProtocol: URLProtocol {
     let session = URLSession(configuration: config)
     let client = AuthHTTPClient(session: session)
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
   }

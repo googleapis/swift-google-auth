@@ -45,19 +45,24 @@ struct AuthHTTPClient: Sendable {
     url: URL,
     headers: [String: String] = [:]
   ) async throws -> T {
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    // Bypass any caching to guarantee fresh tokens
-    request.cachePolicy = .reloadIgnoringLocalCacheData
+    return try await self.mapError {
+      var request = URLRequest(url: url)
+      request.httpMethod = "GET"
+      request.cachePolicy = .reloadIgnoringLocalCacheData
 
-    for (key, value) in headers {
-      request.setValue(value, forHTTPHeaderField: key)
+      for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+
+      let (data, response) = try await self.performRequest(request)
+      try self.ensureSuccess(response, data: data)
+
+      do {
+        return try self.makeDecoder().decode(T.self, from: data)
+      } catch let error as DecodingError {
+        throw AuthHTTPError.decodingError(error: error, data: data)
+      }
     }
-
-    let (data, response) = try await self.performRequest(request)
-    try self.ensureSuccess(response, data: data)
-
-    return try self.makeDecoder().decode(T.self, from: data)
   }
 
   /// Asynchronously dispatches a GET request and returns the raw response body as a plain-text string.
@@ -66,24 +71,23 @@ struct AuthHTTPClient: Sendable {
     url: URL,
     headers: [String: String] = [:]
   ) async throws -> String {
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    request.cachePolicy = .reloadIgnoringLocalCacheData
+    return try await self.mapError {
+      var request = URLRequest(url: url)
+      request.httpMethod = "GET"
+      request.cachePolicy = .reloadIgnoringLocalCacheData
 
-    for (key, value) in headers {
-      request.setValue(value, forHTTPHeaderField: key)
+      for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+
+      let (data, response) = try await self.performRequest(request)
+      try self.ensureSuccess(response, data: data)
+
+      guard let plainText = String(data: data, encoding: .utf8) else {
+        throw AuthHTTPError.decodingError(error: AuthHTTPError.invalidUTF8Response, data: data)
+      }
+      return plainText
     }
-
-    let (data, response) = try await self.performRequest(request)
-    try self.ensureSuccess(response, data: data)
-
-    guard let plainText = String(data: data, encoding: .utf8) else {
-      throw URLError(
-        .cannotDecodeContentData,
-        userInfo: [NSLocalizedDescriptionKey: "Failed to decode UTF-8 string response"]
-      )
-    }
-    return plainText
   }
 
   /// Asynchronously dispatches a POST request sending generic JSON body and decodes the JSON response.
@@ -98,24 +102,45 @@ struct AuthHTTPClient: Sendable {
     body: Body,
     headers: [String: String] = [:]
   ) async throws -> Response {
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.cachePolicy = .reloadIgnoringLocalCacheData
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    return try await self.mapError {
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-    for (key, value) in headers {
-      request.setValue(value, forHTTPHeaderField: key)
+      for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+
+      request.httpBody = try self.makeEncoder().encode(body)
+
+      let (data, response) = try await self.performRequest(request)
+      try self.ensureSuccess(response, data: data)
+
+      do {
+        return try self.makeDecoder().decode(Response.self, from: data)
+      } catch let error as DecodingError {
+        throw AuthHTTPError.decodingError(error: error, data: data)
+      }
     }
-
-    request.httpBody = try self.makeEncoder().encode(body)
-
-    let (data, response) = try await self.performRequest(request)
-    try self.ensureSuccess(response, data: data)
-
-    return try self.makeDecoder().decode(Response.self, from: data)
   }
 
   // MARK: - Private Helpers
+
+  /// Centralizes error mapping logic to wrap any transport or unknown failures in AuthHTTPError.
+  private func mapError<T>(
+    _ operation: () async throws -> T
+  ) async throws -> T {
+    do {
+      return try await operation()
+    } catch let error as AuthHTTPError {
+      throw error
+    } catch let error as URLError {
+      throw AuthHTTPError.transportError(error)
+    } catch {
+      throw AuthHTTPError.unknown(error)
+    }
+  }
 
   private func performRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
     // Support async/await directly on URLSession (handles modern platforms and Linux compatibility)
@@ -159,19 +184,7 @@ struct AuthHTTPClient: Sendable {
 
     let statusCode = httpResponse.statusCode
     guard (200...299).contains(statusCode) else {
-      var userInfo: [String: Any] = [
-        NSLocalizedDescriptionKey: "HTTP request failed with status code \(statusCode)"
-      ]
-      if let bodyString = String(data: data, encoding: .utf8) {
-        userInfo["ErrorBody"] = bodyString
-      }
-      // Include headers in userInfo
-      userInfo["ResponseHeaders"] = httpResponse.allHeaderFields
-
-      throw URLError(
-        URLError.Code(rawValue: statusCode) ?? .badServerResponse,
-        userInfo: userInfo
-      )
+      throw AuthHTTPError.unsuccessfulResponse(response: httpResponse, data: data)
     }
   }
 }

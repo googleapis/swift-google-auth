@@ -38,6 +38,7 @@ private actor AttemptCounter {
 // MARK: - Suite: RetryEngine Test
 
 @Suite struct RetryEngineTest {
+  private let testURL = URL(string: "https://example.com")!
   @Test func retrySucceedsOnFirstAttempt() async throws {
     let attempts = AttemptCounter()
     let result = try await RetryEngine.retry(
@@ -62,11 +63,18 @@ private actor AttemptCounter {
 
     let result = try await RetryEngine.retry(
       configuration: config,
-      isRetryable: { _ in true }
+      isRetryable: { error in
+        if let httpError = error as? AuthHTTPError {
+          return httpError.statusCode == 503
+        }
+        return false
+      }
     ) {
       await attempts.increment()
       if await attempts.count < 3 {
-        throw URLError(.badServerResponse)
+        throw AuthHTTPError.unsuccessfulResponse(
+          response: HTTPURLResponse(
+            url: self.testURL, statusCode: 503, httpVersion: nil, headerFields: nil)!, data: Data())
       }
       return "recovered"
     }
@@ -84,16 +92,20 @@ private actor AttemptCounter {
       maxDelay: .seconds(0.1)
     )
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       try await RetryEngine.retry(
         configuration: config,
         isRetryable: { error in
-          guard let urlError = error as? URLError else { return false }
-          return urlError.code == .badServerResponse
+          if let httpError = error as? AuthHTTPError {
+            return httpError.statusCode == 503
+          }
+          return false
         }
       ) {
         await attempts.increment()
-        throw URLError(.badURL)
+        throw AuthHTTPError.unsuccessfulResponse(
+          response: HTTPURLResponse(
+            url: self.testURL, statusCode: 404, httpVersion: nil, headerFields: nil)!, data: Data())
       }
     }
 
@@ -109,13 +121,20 @@ private actor AttemptCounter {
       maxDelay: .seconds(0.1)
     )
 
-    await #expect(throws: URLError.self) {
+    await #expect(throws: AuthHTTPError.self) {
       try await RetryEngine.retry(
         configuration: config,
-        isRetryable: { _ in true }
+        isRetryable: { error in
+          if let httpError = error as? AuthHTTPError {
+            return httpError.statusCode == 503
+          }
+          return false
+        }
       ) {
         await attempts.increment()
-        throw URLError(.badServerResponse)
+        throw AuthHTTPError.unsuccessfulResponse(
+          response: HTTPURLResponse(
+            url: self.testURL, statusCode: 503, httpVersion: nil, headerFields: nil)!, data: Data())
       }
     }
 
