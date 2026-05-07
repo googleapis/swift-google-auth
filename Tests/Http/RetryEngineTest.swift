@@ -177,6 +177,7 @@ private actor AttemptCounter {
 
   @Test func retryCancelledDuringSleep() async throws {
     let attempts = AttemptCounter()
+    let clock = TestClock()
     let config = RetryConfiguration(
       maxAttempts: 3,
       initialDelay: .seconds(0.5),
@@ -187,6 +188,7 @@ private actor AttemptCounter {
     let task = Task {
       try await RetryEngine.retry(
         configuration: config,
+        clock: clock,
         isRetryable: { _ in true }
       ) {
         await attempts.increment()
@@ -194,10 +196,10 @@ private actor AttemptCounter {
       }
     }
 
-    // Wait for the first attempt to be recorded
-    while await attempts.count < 1 {
-      try await Task.sleep(for: .seconds(0.01))
-    }
+    // Wait for the task to enter sleep in RetryEngine deterministically
+    await clock.sleeperWaiting()
+
+    // Now it is sleeping in RetryEngine!
     task.cancel()
 
     await #expect(throws: CancellationError.self) {

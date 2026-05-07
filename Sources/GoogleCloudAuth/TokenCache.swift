@@ -40,15 +40,42 @@ protocol TokenProvider: Sendable {
   func fetchToken() async throws -> Token
 }
 
+protocol TimeSource: Sendable {
+  var now: Date { get }
+}
+
+struct SystemTimeSource: TimeSource {
+  var now: Date { Date() }
+}
+
+private let defaultNormalRefreshSlack: Duration = .seconds(240)
+private let defaultShortRefreshSlack: Duration = .seconds(10)
+
 /// A thread-safe generic actor that caches and refreshes tokens on-demand.
-actor TokenCache {
+///
+/// ### How It Works
+/// `TokenCache` maintains valid tokens using two core mechanisms:
+///
+/// 1. **Proactive Background Refresh (`backgroundTask`)**
+///    Spawns on initialization to fetch new tokens *before* they expire.
+///    - **Normal Operation:** Sleeps until the current token is *stale* (default: 4 mins before expiry via `normalRefreshSlack`), then refreshes it.
+///    - **Transient Errors:** Retries with a short back-off (default: 10s via `shortRefreshSlack`).
+///    - **Permanent Errors:** Records the error and permanently terminates the background loop.
+///
+/// 2. **On-Demand Access (`token()`)**
+///    Provides tokens to callers while mitigating thundering herds.
+///    - **Fast Path:** Instantly returns a valid cached token (even if currently stale). Under normal operation, callers never experience fetch latency.
+///    - **Slow Path:** If the token is missing or fully expired, callers await an active refresh. Concurrent calls multiplex onto a single task to prevent redundant provider requests.
+///    - **Fatal Errors:** If the background loop recorded a permanent error, `token()` throws it immediately without hitting the provider.
+///
+/// ### Memory Safety
+/// The background task captures `self` weakly. It only holds a strong reference during state evaluation and releases it before sleeping on the `Clock`. This guarantees `TokenCache` can `deinit` cleanly when out of scope, which automatically cancels the background task.
+actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
   private let provider: any TokenProvider
   private var cachedToken: Token?
   private var activeRefreshTask: Task<Token, Error>?
-
-  /// Expirations buffer: tokens are considered stale if they expire in less than 4 minutes (240 seconds).
-  private static let defaultNormalRefreshSlack: Duration = .seconds(240)
-  private static let defaultShortRefreshSlack: Duration = .seconds(10)
+  private let clock: C
+  private let timeSource: any TimeSource
 
   private let normalRefreshSlack: Duration
   private let shortRefreshSlack: Duration
@@ -56,44 +83,60 @@ actor TokenCache {
   private var backgroundTask: Task<Void, Never>?
   private var permanentError: Error?
 
-  /// Initializes the cache wrapping a concrete token provider source.
-  ///
-  /// - Parameters:
-  ///   - provider: The underlying token provider.
-  ///   - normalRefreshSlack: Slack time for normal refresh.
-  ///   - shortRefreshSlack: Slack time for short refresh (polling).
-  ///   - isRetryable: Closure to determine if an error is transient. Defaults to always retry.
+  private enum RefreshAction {
+    case sleep(Duration)
+    case terminate
+  }
+
+  /// Initializes the token cache with a provider, a scheduler clock, and refresh configurations.
+  /// Immediately spawns the proactive background refresh loop.
   init(
     provider: any TokenProvider,
+    clock: C,
+    timeSource: any TimeSource = SystemTimeSource(),
     normalRefreshSlack: Duration = defaultNormalRefreshSlack,
     shortRefreshSlack: Duration = defaultShortRefreshSlack,
     isRetryable: @Sendable @escaping (Error) -> Bool = { _ in true }
   ) async {
     self.provider = provider
+    self.clock = clock
+    self.timeSource = timeSource
     self.normalRefreshSlack = normalRefreshSlack
     self.shortRefreshSlack = shortRefreshSlack
     self.isRetryable = isRetryable
 
-    // Trigger first fetch immediately so activeRefreshTask is populated on startup
-    _ = self.triggerRefresh()
+    let clock = self.clock
+    let timeSource = self.timeSource
 
     self.backgroundTask = Task { [weak self] in
-      await self?.runRefreshLoop()
+      while !Task.isCancelled {
+        let action: RefreshAction? = await { [weak self] in
+          guard let self = self else { return nil }
+          return await self.checkStateAndTriggerRefresh(timeSource: timeSource)
+        }()
+
+        guard let action = action else {
+          break
+        }
+
+        switch action {
+        case .sleep(let duration):
+          try? await clock.sleep(for: duration)
+        case .terminate:
+          return
+        }
+      }
     }
   }
 
   deinit {
     backgroundTask?.cancel()
+    activeRefreshTask?.cancel()
   }
 
-  /// Asynchronously retrieves a valid token from the cache, executing a refresh if stale or missing.
+  /// Retrieves a valid token, instantly returning cached data if available.
   ///
-  /// Concurrent requests will share the same active refresh task, preventing thundering herds.
-  ///
-  /// - Note: If a permanent error occurs during background refresh, the refresh loop terminates
-  ///         and all subsequent calls to this method will fail with that same error indefinitely.
-  ///
-  /// - Returns: A valid, non-stale token.
+  /// If missing/expired, awaits the active background refresh task (sharing it concurrently to prevent thundering herds).
   func token() async throws -> Token {
     if let error = self.permanentError {
       throw error
@@ -103,19 +146,30 @@ actor TokenCache {
       return cached
     }
 
-    // Return active task if exists, or trigger a new refresh
-    return try await self.triggerRefresh().value
+    let task = self.triggerRefresh()
+
+    do {
+      let token = try await task.value
+      self.updateCache(with: token)
+      return token
+    } catch {
+      self.clearActiveTask()
+      if !self.isRetryable(error) {
+        self.permanentError = error
+      }
+      throw error
+    }
   }
 
   // MARK: - Private Helpers
 
   private func isExpired(_ token: Token) -> Bool {
-    return token.expirationDate <= Date()
+    return token.expirationDate <= timeSource.now
   }
 
   private func isStale(_ token: Token) -> Bool {
     let seconds = Double(self.normalRefreshSlack.components.seconds)
-    let thresholdDate = Date().addingTimeInterval(seconds)
+    let thresholdDate = timeSource.now.addingTimeInterval(seconds)
     return token.expirationDate <= thresholdDate
   }
 
@@ -128,17 +182,6 @@ actor TokenCache {
       return try await self.provider.fetchToken()
     }
     self.activeRefreshTask = task
-
-    // Clear task and update cache when done
-    Task { [weak self] in
-      do {
-        let token = try await task.value
-        await self?.updateCache(with: token)
-      } catch {
-        await self?.clearActiveTask()
-      }
-    }
-
     return task
   }
 
@@ -151,48 +194,69 @@ actor TokenCache {
     self.activeRefreshTask = nil
   }
 
-  private func runRefreshLoop() async {
-    while !Task.isCancelled {
-      // If we already have a valid, non-stale token, sleep until it becomes stale
-      if let cached = self.cachedToken, !self.isStale(cached) {
-        let timeUntilStale =
-          cached.expirationDate.timeIntervalSinceNow
-          - Double(self.normalRefreshSlack.components.seconds)
-        if timeUntilStale > 0 {
-          try? await Task.sleep(for: .seconds(timeUntilStale))
-          continue
-        }
-      }
+  private func checkStateAndTriggerRefresh(timeSource: any TimeSource) async -> RefreshAction {
+    if let _ = self.permanentError {
+      return .terminate
+    }
 
-      let task = self.triggerRefresh()
-
-      do {
-        let token = try await task.value
-
-        let timeUntilExpiry = token.expirationDate.timeIntervalSinceNow
-        let duration = Duration.seconds(timeUntilExpiry)
-
-        if duration > self.normalRefreshSlack {
-          try await Task.sleep(for: duration - self.normalRefreshSlack)
-        } else if duration > self.shortRefreshSlack {
-          try await Task.sleep(for: self.shortRefreshSlack)
-        } else {
-          // Expired or very close to it, retry immediately after a short break
-          try await Task.sleep(for: .seconds(1))
-        }
-      } catch {
-        if error is CancellationError {
-          break
-        }
-        // On permanent errors, break the loop to prevent endless polling
-        if !self.isRetryable(error) {
-          self.permanentError = error
-          break
-        }
-        // Handle transient errors by sleeping and retrying
-        try? await Task.sleep(for: self.shortRefreshSlack)
+    // If we already have a valid, non-stale token, sleep until it becomes stale
+    if let cached = self.cachedToken, !self.isStale(cached) {
+      let timeUntilStale =
+        cached.expirationDate.timeIntervalSince(timeSource.now)
+        - Double(self.normalRefreshSlack.components.seconds)
+      if timeUntilStale > 0 {
+        return .sleep(.seconds(timeUntilStale))
       }
     }
+
+    let task = self.triggerRefresh()
+
+    do {
+      let token = try await task.value
+      self.updateCache(with: token)
+
+      let timeUntilExpiry = token.expirationDate.timeIntervalSince(timeSource.now)
+      let duration = Duration.seconds(timeUntilExpiry)
+
+      if duration > self.normalRefreshSlack {
+        return .sleep(duration - self.normalRefreshSlack)
+      } else if duration > self.shortRefreshSlack {
+        return .sleep(self.shortRefreshSlack)
+      } else {
+        return .sleep(.seconds(1))
+      }
+    } catch {
+      if error is CancellationError {
+        return .terminate
+      }
+      self.clearActiveTask()
+
+      // On permanent errors, break the loop to prevent endless polling
+      if !self.isRetryable(error) {
+        self.permanentError = error
+        return .terminate
+      }
+      // Handle transient errors by sleeping and retrying
+      return .sleep(self.shortRefreshSlack)
+    }
+  }
+}
+
+extension TokenCache where C == ContinuousClock {
+  /// Initializes the cache wrapping a concrete token provider source using the system ContinuousClock.
+  init(
+    provider: any TokenProvider,
+    normalRefreshSlack: Duration = defaultNormalRefreshSlack,
+    shortRefreshSlack: Duration = defaultShortRefreshSlack,
+    isRetryable: @Sendable @escaping (Error) -> Bool = { _ in true }
+  ) async {
+    await self.init(
+      provider: provider,
+      clock: ContinuousClock(),
+      normalRefreshSlack: normalRefreshSlack,
+      shortRefreshSlack: shortRefreshSlack,
+      isRetryable: isRetryable
+    )
   }
 }
 

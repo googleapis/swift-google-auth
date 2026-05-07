@@ -86,6 +86,17 @@ enum RetryEngine: Sendable {
     isRetryable: @Sendable (Error) -> Bool,
     operation: @Sendable () async throws -> T
   ) async throws -> T {
+    return try await retry(
+      configuration: configuration, clock: ContinuousClock(), isRetryable: isRetryable,
+      operation: operation)
+  }
+
+  static func retry<T: Sendable, C: Clock>(
+    configuration: RetryConfiguration = .defaultConfiguration,
+    clock: C,
+    isRetryable: @Sendable (Error) -> Bool,
+    operation: @Sendable () async throws -> T
+  ) async throws -> T where C.Instant.Duration == Duration {
     var attempt = 1
     var delay = configuration.initialDelay
 
@@ -108,7 +119,7 @@ enum RetryEngine: Sendable {
 
         // Sleep for a random duration between 0 and the current backoff delay (Full Jitter)
         let jitter = Double.random(in: 0.0...1.0)
-        try await Task.sleep(for: delay * jitter)
+        try await clock.sleep(for: delay * jitter)
 
         // Increment attempt and scale backoff delay exponentially
         attempt += 1
