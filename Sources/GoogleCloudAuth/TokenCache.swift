@@ -80,7 +80,6 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
   private let normalRefreshSlack: Duration
   private let shortRefreshSlack: Duration
   private let isRetryable: @Sendable (Error) -> Bool
-  private var backgroundTask: Task<Void, Never>?
   private var permanentError: Error?
 
   private enum RefreshAction {
@@ -97,7 +96,7 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
     normalRefreshSlack: Duration = defaultNormalRefreshSlack,
     shortRefreshSlack: Duration = defaultShortRefreshSlack,
     isRetryable: @Sendable @escaping (Error) -> Bool = { _ in true }
-  ) async {
+  ) {
     self.provider = provider
     self.clock = clock
     self.timeSource = timeSource
@@ -108,7 +107,7 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
     let clock = self.clock
     let timeSource = self.timeSource
 
-    self.backgroundTask = Task { [weak self] in
+    Task { [weak self] in
       while !Task.isCancelled {
         let action: RefreshAction? = await { [weak self] in
           guard let self = self else { return nil }
@@ -130,7 +129,6 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
   }
 
   deinit {
-    backgroundTask?.cancel()
     activeRefreshTask?.cancel()
   }
 
@@ -249,8 +247,8 @@ extension TokenCache where C == ContinuousClock {
     normalRefreshSlack: Duration = defaultNormalRefreshSlack,
     shortRefreshSlack: Duration = defaultShortRefreshSlack,
     isRetryable: @Sendable @escaping (Error) -> Bool = { _ in true }
-  ) async {
-    await self.init(
+  ) {
+    self.init(
       provider: provider,
       clock: ContinuousClock(),
       normalRefreshSlack: normalRefreshSlack,
