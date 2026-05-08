@@ -13,17 +13,18 @@
 // limitations under the License.
 
 import Foundation
-import Testing
 
-@testable import GoogleCloudAuth
+struct JWSHeader: Codable, Sendable {
+  let alg = "RS256"
+  let typ = "JWT"
+  let kid: String
+}
 
-@Suite struct ServiceAccountCredentialsTest {
-  @Test func serviceAccountProviderHeadersAndUniverseDomainAreEmpty() async throws {
-    let provider = ServiceAccountCredentials()
-    let headers = try await provider.headers()
-    #expect(headers.isEmpty)
-
-    let ud = await provider.universeDomain()
-    #expect(ud == nil)
-  }
+struct JWSClaims: Codable, Sendable {
+  let iss: String
+  let sub: String
+  let scope: String?
+  let aud: String?
+  let iat: Int64
+  let exp: Int64
 }

@@ -14,17 +14,42 @@
 
 import Foundation
 
-/// Creates credentials backed by a local Service Account JSON key file.
 struct ServiceAccountCredentials: CredentialsSource, Sendable {
-  // MARK: - CredentialsSource
+  private let tokenProvider: TokenCache<ContinuousClock>
+  private let quotaProjectID: String?
+  private let universeDomain: String?
 
-  /// Asynchronously retrieves mock empty headers for the skeleton phase.
-  func headers() async throws -> [(String, String)] {
-    return []
+  init(
+    keyJSON: Data,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil,
+    audience: String? = nil
+  ) throws {
+    let key: ServiceAccountData
+    do {
+      key = try JSONDecoder().decode(ServiceAccountData.self, from: keyJSON)
+    } catch {
+      throw CredentialsError.parseError(
+        "Failed to parse Service Account key JSON: \(error.localizedDescription)")
+    }
+    let provider = ServiceAccountTokenProvider(key: key, scopes: scopes, audience: audience)
+
+    self.tokenProvider = TokenCache(provider: provider)
+    self.quotaProjectID = quotaProjectID
+    self.universeDomain = universeDomain ?? key.universeDomain
   }
 
-  /// Retrieves the universe domain string override.
+  func headers() async throws -> AuthHeaders {
+    let token = try await tokenProvider.token()
+    var headers: AuthHeaders = [("Authorization", "Bearer \(token.accessToken)")]
+    if let quotaProjectID = quotaProjectID {
+      headers.append(("x-goog-user-project", quotaProjectID))
+    }
+    return headers
+  }
+
   func universeDomain() async -> String? {
-    return nil
+    return self.universeDomain
   }
 }

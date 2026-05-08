@@ -22,6 +22,15 @@ import Foundation
 /// Formatted as an array of key-value tuples to natively support duplicate header names.
 public typealias AuthHeaders = [(String, String)]
 
+/// Represents any error occurring during credentials resolution or initialization.
+public enum CredentialsError: Error, Sendable, Hashable {
+  /// Indicates that the requested operation or credential type is not supported by the current backend.
+  case notSupported(String)
+
+  /// Indicates a failure while parsing or decoding configuration data (e.g., malformed JSON key).
+  case parseError(String)
+}
+
 /// Defines the configurations for authenticating Google Cloud API requests.
 public enum CredentialsConfiguration: Sendable {
   /// Automatically resolves credentials using Application Default Credentials (ADC).
@@ -29,6 +38,22 @@ public enum CredentialsConfiguration: Sendable {
 
   /// Returns a stub credential that provides no headers (unauthenticated).
   case anonymous
+
+  /// Explicitly signs JWS assertions locally using a Service Account JSON key in memory.
+  ///
+  /// - Parameters:
+  ///   - keyJSON: The raw Service Account JSON key file contents.
+  ///   - quotaProjectID: A custom project ID used for billing and quota.
+  ///   - universeDomain: Google Cloud universe domain override.
+  ///   - scopes: Optional scopes requested (exchanged locally via JWT claims).
+  ///   - audience: Optional custom target audience override.
+  case serviceAccount(
+    keyJSON: Data,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil,
+    audience: String? = nil
+  )
 }
 
 /// A type that can provide authentication headers for Google Cloud API requests.
@@ -90,6 +115,14 @@ public struct Credentials: Sendable {
       return try ADC.resolve()
     case .anonymous:
       return AnonymousCredentials()
+    case let .serviceAccount(keyJSON, quotaProjectID, universeDomain, scopes, audience):
+      return try ServiceAccountCredentials(
+        keyJSON: keyJSON,
+        quotaProjectID: quotaProjectID,
+        universeDomain: universeDomain,
+        scopes: scopes,
+        audience: audience
+      )
     }
   }
 }

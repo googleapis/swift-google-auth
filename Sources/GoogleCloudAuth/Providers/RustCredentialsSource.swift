@@ -29,6 +29,9 @@ struct RustCredentialsSource: CredentialsSource {
       self.inner = RustAuthCoreBridge.Credentials.anonymous()
     case .adc:
       self.inner = try RustAuthCoreBridge.Credentials()
+    case .serviceAccount:
+      throw RustAuthCoreBridge.AuthError.Initialize(
+        "Service Account configurations are not supported on the FFI backend.")
     }
   }
 
