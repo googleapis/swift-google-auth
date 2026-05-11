@@ -15,9 +15,16 @@
 import Foundation
 
 struct JWSHeader: Codable, Sendable {
-  let alg = "RS256"
-  let typ = "JWT"
+  let alg: String
+  let typ: String
   let kid: String
+
+  /// Initialize using a RSA256 Key Id.
+  public init(rs256 kid: String) {
+    self.alg = "RS256"
+    self.typ = "JWT"
+    self.kid = kid
+  }
 }
 
 struct JWSClaims: Codable, Sendable {

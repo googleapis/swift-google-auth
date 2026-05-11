@@ -24,7 +24,7 @@ struct ADCPathTests {
     let path = resolveWellKnownADCPath(environment: env, isWindows: true)
     #expect(path?.path == "C:/Users/foo/gcloud/application_default_credentials.json")
 
-    let resolved = resolveADCPath(environment: env)
+    let _ = resolveADCPath(environment: env)
     // We can't strictly test `resolveADCPath` with `isWindows` injected easily without changing its signature,
     // but we verify well-known path generation logic directly.
   }

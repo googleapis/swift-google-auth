@@ -236,7 +236,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
       accessToken: "token-1", expirationDate: Date().addingTimeInterval(1000))
     await provider.configure(token: expectedToken)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -254,7 +254,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
       accessToken: "token-1", expirationDate: Date().addingTimeInterval(1000))
     await provider.configure(token: expectedToken)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -281,7 +281,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     await provider.configure(token: staleToken)
 
     // Use very short slack values for testing!
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       timeSource: timeSource,
@@ -319,7 +319,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
       accessToken: "shared-token", expirationDate: Date().addingTimeInterval(1000))
     await provider.configure(token: expectedToken)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -357,7 +357,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     let clock = TestClock()
     let expectedError = URLError(.timedOut)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -406,7 +406,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     let expectedError = URLError(.userAuthenticationRequired)
     await provider.configure(token: nil, error: expectedError)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       normalRefreshSlack: .seconds(2),
@@ -436,7 +436,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
       accessToken: "initial-token", expirationDate: now.addingTimeInterval(1.0))
     await provider.configure(token: initialToken)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       timeSource: timeSource,
@@ -470,7 +470,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
       accessToken: "expired-token", expirationDate: now.addingTimeInterval(-10))
     await provider.configure(token: expiredToken)
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: provider,
       clock: clock,
       timeSource: timeSource,
@@ -501,7 +501,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     let delayedProvider = DelayedTokenProvider(token: expectedToken)
     let clock = TestClock()
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: delayedProvider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -537,7 +537,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     let delayedProvider = DelayedFailedTokenProvider(error: expectedError)
     let clock = TestClock()
 
-    let cache = await TokenCache(
+    let cache = TokenCache(
       provider: delayedProvider,
       clock: clock,
       shortRefreshSlack: .seconds(1)
@@ -586,7 +586,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
 @Test func testDebugTokenCache() async {
   let provider = MockTokenProvider()
   let clock = TestClock()
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     shortRefreshSlack: .seconds(1)
@@ -603,7 +603,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     accessToken: "token-1", expirationDate: Date().addingTimeInterval(1000))
   await provider.configure(token: expectedToken)
 
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     shortRefreshSlack: .seconds(1)
@@ -621,7 +621,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
   let expectedError = URLError(.userAuthenticationRequired)
   await provider.configure(token: nil, error: expectedError)
 
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     normalRefreshSlack: .seconds(2),
@@ -666,7 +666,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(5.0))
   await provider.configure(token: token)
 
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     timeSource: timeSource,
@@ -712,7 +712,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(10.0))
   await provider.configure(token: token)
 
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     timeSource: timeSource,
@@ -744,7 +744,7 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     accessToken: "initial-token", expirationDate: now.addingTimeInterval(10.0))
   await provider.configure(token: initialToken)
 
-  let cache = await TokenCache(
+  let cache = TokenCache(
     provider: provider,
     clock: clock,
     timeSource: timeSource,
