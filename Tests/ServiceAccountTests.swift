@@ -38,9 +38,7 @@ struct ServiceAccountTests {
     #expect(debugDescription.contains("[censored]"))
   }
 
-  @Test(
-    "Service Account Credentials returns standard headers successfully",
-    .disabled("Unimplemented in skeleton phase"))
+  @Test("Service Account Credentials returns standard headers successfully")
   func testHeadersSuccessWithoutQuotaProject() async throws {
     let credentials = try ServiceAccountCredentials(keyJSON: mockKeyJSON)
     let headers = try await credentials.headers()
@@ -50,9 +48,7 @@ struct ServiceAccountTests {
     #expect(headers[0].1.hasPrefix("Bearer "))
   }
 
-  @Test(
-    "Service Account Credentials injects custom billing quota project header",
-    .disabled("Unimplemented in skeleton phase"))
+  @Test("Service Account Credentials injects custom billing quota project header")
   func testHeadersSuccessWithQuotaProject() async throws {
     let credentials = try ServiceAccountCredentials(
       keyJSON: mockKeyJSON, quotaProjectID: "quota-proj-123")
