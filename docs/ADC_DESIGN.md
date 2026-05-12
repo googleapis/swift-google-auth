@@ -6,10 +6,10 @@ environment.
 
 **Out of scope:**
 
-- Impersonated Credentials (`impersonated_service_account`)
-- External Account Credentials (`external_account`)
-- GDCH Service Account Credentials (`gdch_service_account`)
-- Extracting or generating custom JWTs beyond standard Auth header needs.
+-   Impersonated Credentials (`impersonated_service_account`)
+-   External Account Credentials (`external_account`)
+-   GDCH Service Account Credentials (`gdch_service_account`)
+-   Extracting or generating custom JWTs beyond standard Auth header needs.
 
 # Background
 
@@ -24,16 +24,17 @@ established test suites.
 
 # Requirements
 
-- **Strict Precedence:** Must parse `GOOGLE_APPLICATION_CREDENTIALS` environment
-  variable first, then fallback to standard OS paths (AIP-4110), and finally
-  fallback to Metadata Server (MDS).
-- **Environment Parity:** Must support `GOOGLE_CLOUD_QUOTA_PROJECT` overrides.
-- **Provider Routing:** Must dynamically route the JSON configuration to the
-  appropriate credential provider based on the `"type"` field (`service_account`
-  or `authorized_user`).
-- **Feature Parity:** Must implement `buildAccessTokenCredentials()`,
-  `buildSigner()`, and `build()` endpoints natively.
-- **Test Parity:** Must execute all applicable unit tests matching Rust parity.
+-   **Strict Precedence:** Must parse `GOOGLE_APPLICATION_CREDENTIALS`
+    environment variable first, then fallback to standard OS paths (AIP-4110),
+    and finally fallback to Metadata Server (MDS).
+-   **Environment Parity:** Must support `GOOGLE_CLOUD_QUOTA_PROJECT` overrides.
+-   **Provider Routing:** Must dynamically route the JSON configuration to the
+    appropriate credential provider based on the `"type"` field
+    (`service_account` or `authorized_user`).
+-   **Feature Parity:** Must implement `buildAccessTokenCredentials()`,
+    `buildSigner()`, and `build()` endpoints natively.
+-   **Test Parity:** Must execute all applicable unit tests matching Rust
+    parity.
 
 # Overview
 
@@ -52,62 +53,23 @@ the Google Compute Engine Metadata Server (MDS).
 The system will resolve credentials following the exact standard precedence
 (`ADCPath.swift`):
 
-1. **Environment Variable**: Check `GOOGLE_APPLICATION_CREDENTIALS`. If set, use
-   strictly. If set but missing, throw an error.
-1. **Well-known File Locations**:
-   - Windows: `%APPDATA%\gcloud\application_default_credentials.json`
-   - POSIX (Linux/macOS):
-     `$HOME/.config/gcloud/application_default_credentials.json`
-1. **Metadata Server**: If the environment variable is not set, and the
-   well-known file is missing or paths cannot be determined, fall back to MDS.
+1.  **Environment Variable**: Check `GOOGLE_APPLICATION_CREDENTIALS`. If set,
+    use strictly. If set but missing, throw an error.
+1.  **Well-known File Locations**:
+    -   Windows: `%APPDATA%\gcloud\application_default_credentials.json`
+    -   POSIX (Linux/macOS):
+        `$HOME/.config/gcloud/application_default_credentials.json`
+1.  **Metadata Server**: If the environment variable is not set, and the
+    well-known file is missing or paths cannot be determined, fall back to MDS.
 
 ## 2. Pluggable Parser Registry & Weak Decoding
 
 To avoid coupling the core ADC resolver with all possible credential types (and
 their heavy dependencies like Crypto), we will use a dynamic registry pattern.
 
-```swift
-internal protocol CredentialSourceParser: Sendable {
-    static var type: String { get }
-    init()
-    func parse(
-        config: [String: Any],
-        quotaProjectID: String?,
-        universeDomain: String?,
-        scopes: [String],
-        environment: [String: String]
-    ) throws -> any CredentialsSource
-}
-
-internal final class CredentialParserRegistry: Sendable {
-    internal static let shared = CredentialParserRegistry()
-    private let parsers = Mutex<[String: any CredentialSourceParser.Type]>([:])
-
-    internal func register(parser: any CredentialSourceParser.Type) {
-        parsers.withLock { $0[parser.type] = parser }
-    }
-
-    internal func parse(
-        type: String,
-        config: [String: Any],
-        quotaProjectID: String?,
-        universeDomain: String?,
-        scopes: [String],
-        environment: [String: String]
-    ) throws -> (any CredentialsSource)? {
-        return try parsers.withLock { parsers in
-            guard let parserType = parsers[type] else { return nil }
-            return try parserType.init().parse(
-                config: config,
-                quotaProjectID: quotaProjectID,
-                universeDomain: universeDomain,
-                scopes: scopes,
-                environment: environment
-            )
-        }
-    }
-}
-```
+See
+[CredentialParserRegistry.swift](../Sources/GoogleCloudAuth/CredentialParserRegistry.swift)
+for the protocol and the thread-safe dynamic registry pattern implementation.
 
 The ADC resolver will read the file using `JSONSerialization` (weak typing) to
 extract the `"type"` field. It will then pass the dictionary to the
@@ -117,19 +79,15 @@ specific configuration struct (e.g., `ServiceAccountCredentials` or
 
 ## 3. Quota and Scopes Configuration
 
-The `CredentialsConfiguration` enum natively handles overrides using associated values on the `.adc` case without breaking existing usage:
+The `CredentialsConfiguration` enum natively handles overrides using associated
+values on the `.adc` case without breaking existing usage. See
+[Credentials.swift](../Sources/GoogleCloudAuth/Credentials.swift) for the enum
+implementation.
 
-```swift
-public enum CredentialsConfiguration: Sendable {
-  case adc(quotaProjectID: String? = nil, universeDomain: String? = nil, scopes: [String] = [])
-  case anonymous
-}
-```
-
-- `quotaProjectID`: Manually sets the quota project ID. This is overridden by
-  the `GOOGLE_CLOUD_QUOTA_PROJECT` environment variable if present.
-- `universeDomain`: Sets the expected universe domain.
-- `scopes`: Adds specific scopes to the credentials.
+-   `quotaProjectID`: Manually sets the quota project ID. This is overridden by
+    the `GOOGLE_CLOUD_QUOTA_PROJECT` environment variable if present.
+-   `universeDomain`: Sets the expected universe domain.
+-   `scopes`: Adds specific scopes to the credentials.
 
 ## 4. Token Caching
 
@@ -142,13 +100,17 @@ optimization and behavior.
 
 # Implementation details
 
-- `packages/auth/Sources/GoogleCloudAuth/ADCPath.swift`: Handles AIP-4110 path precedence.
-- `packages/auth/Sources/GoogleCloudAuth/ADCResolver.swift`: Reads raw JSON file data from the resolved path.
-- `packages/auth/Sources/GoogleCloudAuth/ADC.swift`: Orchestrates JSON decoding, quota project injection, and registry delegation.
-- `packages/auth/Sources/GoogleCloudAuth/CredentialParserRegistry.swift`:
-  Contains the `CredentialParserRegistry` class and `CredentialSourceParser`
-  protocol.
-- `packages/auth/Sources/GoogleCloudAuth/Credentials.swift`: Maintains the public `CredentialsConfiguration` enum.
+-   `packages/auth/Sources/GoogleCloudAuth/ADCPath.swift`: Handles AIP-4110 path
+    precedence.
+-   `packages/auth/Sources/GoogleCloudAuth/ADCResolver.swift`: Reads raw JSON
+    file data from the resolved path.
+-   `packages/auth/Sources/GoogleCloudAuth/ADC.swift`: Orchestrates JSON
+    decoding, quota project injection, and registry delegation.
+-   `packages/auth/Sources/GoogleCloudAuth/CredentialParserRegistry.swift`:
+    Contains the `CredentialParserRegistry` class and `CredentialSourceParser`
+    protocol.
+-   `packages/auth/Sources/GoogleCloudAuth/Credentials.swift`: Maintains the
+    public `CredentialsConfiguration` enum.
 
 # Testing Parity
 
@@ -157,14 +119,14 @@ suites:
 
 ### Unit Tests (`packages/auth/Tests/ADCResolverTests.swift` & `ADCPathTests.swift`)
 
-- **Path Resolution**: `adc_well_known_path_windows`,
-  `adc_well_known_path_posix`, `adc_path_from_env`
-- **Loading Behavior**:
-  - `load_adc_no_file_at_env_is_error`
-  - `load_adc_no_well_known_path_fallback_to_mds`
-  - `load_adc_success`
-- **Quota Project Override**:
-  `create_access_token_credentials_fallback_to_mds_with_quota_project_override`
+-   **Path Resolution**: `adc_well_known_path_windows`,
+    `adc_well_known_path_posix`, `adc_path_from_env`
+-   **Loading Behavior**:
+    -   `load_adc_no_file_at_env_is_error`
+    -   `load_adc_no_well_known_path_fallback_to_mds`
+    -   `load_adc_success`
+-   **Quota Project Override**:
+    `create_access_token_credentials_fallback_to_mds_with_quota_project_override`
 
 # Alternatives considered
 
@@ -183,15 +145,16 @@ async boot sequence provides negligible performance benefits in this context.
 
 # Risks and Mitigation Strategies
 
-- **Risk**: Breaking changes in generated client libraries that depend on the
-  existing `Credentials` API. **Mitigation**: We will ensure the `Credentials`
-  public API remains identical, preserving standard initializers and
-  `AuthHeaders` returning formats.
-- **Risk**: Concurrency issues and data races when registering parsers.
-  **Mitigation**: Using `Synchronization.Mutex` inside a `Sendable` `final class`
-  guarantees thread-safe registration and resolution across asynchronous tasks.
+-   **Risk**: Breaking changes in generated client libraries that depend on the
+    existing `Credentials` API. **Mitigation**: We will ensure the `Credentials`
+    public API remains identical, preserving standard initializers and
+    `AuthHeaders` returning formats.
+-   **Risk**: Concurrency issues and data races when registering parsers.
+    **Mitigation**: Using `Synchronization.Mutex` inside a `Sendable` `final
+    class` guarantees thread-safe registration and resolution across
+    asynchronous tasks.
 
 # Corpus of information
 
-- [AIP-4110: Application Default Credentials](https://google.aip.dev/auth/4110)
-- `google-cloud-swift` mono-repo structure
+-   [AIP-4110: Application Default Credentials](https://google.aip.dev/auth/4110)
+-   `google-cloud-swift` mono-repo structure
