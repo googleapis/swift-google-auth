@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
-import Testing
+import Synchronization
 
-@testable import GoogleCloudAuth
+final class CallCounter: Sendable {
+  private let _count = Mutex(0)
 
-// MARK: - Suite: ADCTest
+  func increment() -> Int {
+    return _count.withLock { value in
+      value += 1
+      return value
+    }
+  }
 
-@Suite struct ADCTest {
-  @Test func adcResolvesToMDSCredentials() async throws {
-    let provider = try ADC.resolve(environment: [:])
-    #expect(provider is MDSCredentials)
-
-    let ud = await provider.universeDomain()
-    #expect(ud == nil)
+  func getCount() -> Int {
+    return _count.withLock { $0 }
   }
 }

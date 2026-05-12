@@ -20,17 +20,45 @@ import Foundation
 
 /// Creates credentials backed by the local GCP Compute Engine Metadata Service (MDS).
 struct MDSCredentials: CredentialsSource, Sendable {
-  let quotaProjectID: String?
+  let provider: MDSAccessTokenProvider
+  let cache: TokenCache<ContinuousClock>
+  var quotaProjectID: String? { provider.quotaProjectID }
 
-  init(quotaProjectID: String? = nil) {
-    self.quotaProjectID = quotaProjectID
+  init(
+    endpoint: URL? = nil,
+    quotaProjectID: String? = nil,
+    scopes: [String]? = nil,
+    retryConfiguration: RetryConfiguration? = nil,
+    client: AuthHTTPClient = AuthHTTPClient(),
+    fromADC: Bool = false,
+    environment: [String: String] = ProcessInfo.processInfo.environment
+  ) {
+    let provider = MDSAccessTokenProvider(
+      endpoint: endpoint,
+      quotaProjectID: quotaProjectID,
+      scopes: scopes,
+      retryConfiguration: retryConfiguration,
+      client: client,
+      fromADC: fromADC,
+      environment: environment
+    )
+    self.provider = provider
+
+    self.cache = TokenCache(
+      provider: provider,
+      isRetryable: MDSAccessTokenProvider.isRetryable
+    )
   }
 
   // MARK: - CredentialsSource
 
-  /// Asynchronously retrieves mock empty headers for the skeleton phase.
   func headers() async throws -> [(String, String)] {
-    return []
+    let token = try await self.cache.token()
+    var headers = [("Authorization", "Bearer \(token.accessToken)")]
+    if let quota = self.provider.quotaProjectID {
+      headers.append(("X-Goog-User-Project", quota))
+    }
+    return headers
   }
 
   /// Retrieves the universe domain string override.

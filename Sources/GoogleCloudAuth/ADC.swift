@@ -37,7 +37,7 @@ enum ADC: Sendable {
     let contents = try loadADC(environment: environment)
     switch contents {
     case .fallbackToMds:
-      return MDSCredentials(quotaProjectID: quotaProject)
+      return MDSCredentials(quotaProjectID: quotaProject, fromADC: true)
     case .contents(let data):
       guard
         let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],

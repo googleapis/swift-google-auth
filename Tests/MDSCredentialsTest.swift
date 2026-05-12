@@ -14,16 +14,306 @@
 
 import Foundation
 import Testing
-
 @testable import GoogleCloudAuth
 
-@Suite struct MDSCredentialsTest {
-  @Test func mdsProviderHeadersAndUniverseDomainAreEmpty() async throws {
-    let provider = MDSCredentials()
-    let headers = try await provider.headers()
-    #expect(headers.isEmpty)
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
 
+private final class MockURLProtocol: URLProtocol {
+  nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (URLResponse, Data))?
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    guard let handler = MockURLProtocol.requestHandler else {
+      fatalError("Handler is unavailable.")
+    }
+    do {
+      let (response, data) = try handler(request)
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: data)
+      client?.urlProtocolDidFinishLoading(self)
+    } catch {
+      client?.urlProtocol(self, didFailWithError: error)
+    }
+  }
+
+  override func stopLoading() {}
+}
+
+@Suite(.serialized) struct MDSCredentialsTest {
+  private let mockSession: URLSession
+
+  init() {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [MockURLProtocol.self]
+    self.mockSession = URLSession(configuration: config)
+  }
+
+  @Test func headers_success_with_quota_project() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+
+    struct MockResponse: Encodable {
+      let accessToken: String
+      let expiresIn: Int
+      let tokenType: String
+    }
+    let mockPayload = MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer")
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let encodedData = try encoder.encode(mockPayload)
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil as String?,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, encodedData)
+    }
+
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(
+      quotaProjectID: "my-quota-project", client: client, environment: [:])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-token" },
+      "Missing authorization header in \(headers)"
+    )
+    #expect(
+      headers.contains { $0.0 == "X-Goog-User-Project" && $0.1 == "my-quota-project" },
+      "Missing quota project ID header in \(headers)"
+    )
+  }
+
+  @Test func test_gce_metadata_host_env_var() async throws {
+    let targetURL = URL(
+      string: "http://127.0.0.1:8080/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+
+    struct MockResponse: Encodable {
+      let accessToken: String
+      let expiresIn: Int
+      let tokenType: String
+    }
+    let mockPayload = MockResponse(
+      accessToken: "mock-override-token", expiresIn: 3600, tokenType: "Bearer")
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let encodedData = try encoder.encode(mockPayload)
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let response = HTTPURLResponse(
+        url: targetURL, statusCode: 200, httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"])!
+      return (response, encodedData)
+    }
+
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(
+      client: client, environment: ["GCE_METADATA_HOST": "127.0.0.1:8080"])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-override-token" },
+      "Missing authorization header in \(headers) for overridden MDS host"
+    )
+  }
+
+  @Test func mdsProviderUniverseDomainIsNil() async throws {
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(client: client, environment: [:])
     let ud = await provider.universeDomain()
-    #expect(ud == nil)
+    #expect(ud == nil, "Universe domain should be nil for MDS provider")
+  }
+
+  @Test func adc_no_mds() async throws {
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      throw URLError(.cannotConnectToHost)
+    }
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(client: client, fromADC: true, environment: [:])
+    let error = await #expect(throws: CredentialsError.self) { _ = try await provider.headers() }
+
+    if let error = error {
+      #expect(
+        error.localizedDescription.contains("application-default"),
+        "Localized description lacks application-default troubleshooting context: \(error.localizedDescription)"
+      )
+
+      if case let .missingEnvironmentConfiguration(payload) = error {
+        #expect(
+          payload.contains("GCE_METADATA_HOST"),
+          "Error payload lacks specific environment diagnostic info: \(payload)"
+        )
+      }
+    }
+  }
+
+  @Test func adc_overridden_mds() async throws {
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      throw URLError(.cannotConnectToHost)
+    }
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(
+      client: client, fromADC: true, environment: ["GCE_METADATA_HOST": "127.0.0.1:8080"])
+    let error = await #expect(throws: AuthHTTPError.self) { _ = try await provider.headers() }
+    if case let .transportError(urlError) = error {
+      #expect(
+        urlError.code == .cannotConnectToHost, "Expected cannotConnectToHost, got \(urlError.code)")
+    }
+  }
+
+  @Test func test_mds_retries_on_transient_failures() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+    struct MockResponse: Encodable {
+      let accessToken: String; let expiresIn: Int; let tokenType: String
+    }
+    let mockPayload = MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer")
+    let encodedData = try JSONEncoder().encode(mockPayload)
+
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let count = attempts.increment()
+      if count < 3 {
+        return (
+          HTTPURLResponse(url: targetURL, statusCode: 503, httpVersion: nil, headerFields: nil)!,
+          Data()
+        )
+      }
+      return (
+        HTTPURLResponse(
+          url: targetURL, statusCode: 200, httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"])!, encodedData
+      )
+    }
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 3, initialDelay: .milliseconds(1), multiplier: 1.0, maxDelay: .milliseconds(1))
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(
+      retryConfiguration: retryConfig, client: client, fromADC: false, environment: [:])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-token" },
+      "Missing authorization header in \(headers)"
+    )
+    let count = attempts.getCount()
+    #expect(count == 3, "Expected exactly 3 execution attempts, got \(count)")
+  }
+
+  @Test func test_mds_retries_for_success() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+    struct MockResponse: Encodable {
+      let accessToken: String; let expiresIn: Int; let tokenType: String
+    }
+    let encodedData = try JSONEncoder().encode(
+      MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer"))
+
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let count = attempts.increment()
+      if count == 1 {
+        return (
+          HTTPURLResponse(url: targetURL, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+          Data()
+        )
+      }
+      return (
+        HTTPURLResponse(
+          url: targetURL, statusCode: 200, httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"])!, encodedData
+      )
+    }
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 2, initialDelay: .milliseconds(1), multiplier: 1.0, maxDelay: .milliseconds(1))
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(retryConfiguration: retryConfig, client: client, environment: [:])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-token" },
+      "Missing authorization header in \(headers)"
+    )
+    let count = attempts.getCount()
+    #expect(count == 2, "Expected exactly 2 execution attempts, got \(count)")
+  }
+
+  @Test func test_mds_does_not_retry_on_non_transient_failures() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let _ = attempts.increment()
+      return (
+        HTTPURLResponse(url: targetURL, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+        Data()
+      )
+    }
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 3, initialDelay: .milliseconds(1), multiplier: 1.0, maxDelay: .milliseconds(1))
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(retryConfiguration: retryConfig, client: client, environment: [:])
+
+    await #expect(throws: AuthHTTPError.self) {
+      _ = try await provider.headers()
+    }
+    let count = attempts.getCount()
+    #expect(count == 1, "Expected no retries on permanent HTTP 404 error, got \(count) calls")
+  }
+
+  @Test func token_caching() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+    struct MockResponse: Encodable {
+      let accessToken: String; let expiresIn: Int; let tokenType: String
+    }
+    let encodedData = try JSONEncoder().encode(
+      MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer"))
+
+    let networkCalls = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let _ = networkCalls.increment()
+      return (
+        HTTPURLResponse(
+          url: targetURL, statusCode: 200, httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"])!, encodedData
+      )
+    }
+
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(client: client, environment: [:])
+
+    _ = try await provider.headers()
+    _ = try await provider.headers()
+    _ = try await provider.headers()
+
+    let count = networkCalls.getCount()
+    #expect(
+      count == 1, "Expected exactly 1 network request due to proactive actor caching, got \(count)")
   }
 }

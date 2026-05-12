@@ -29,6 +29,37 @@ public enum CredentialsError: Error, Sendable, Hashable {
 
   /// Indicates a failure while parsing or decoding configuration data (e.g., malformed JSON key).
   case parseError(String)
+
+  /// Application Default Credentials (ADC) could not resolve a valid configuration.
+  ///
+  /// ## Troubleshooting
+  ///
+  /// Could not fetch an auth token to authenticate with Google Cloud. The most common reason
+  /// for this problem is that you are not running in a Google Cloud environment and you have
+  /// not configured local credentials for development and testing.
+  ///
+  /// To setup local credentials, run `gcloud auth application-default login`. More information
+  /// on how to authenticate client libraries can be found at
+  /// https://cloud.google.com/docs/authentication/client-libraries
+  case missingEnvironmentConfiguration(String)
+}
+
+extension CredentialsError: LocalizedError {
+  public var errorDescription: String? {
+    switch self {
+    case .notSupported(let detail):
+      return "Operation not supported: \(detail)"
+    case .parseError(let detail):
+      return "Configuration parse error: \(detail)"
+    case .missingEnvironmentConfiguration(let context):
+      return """
+        Could not fetch an auth token to authenticate with Google Cloud. The most common reason for this problem is that you are not running in a Google Cloud environment and you have not configured local credentials for development and testing.
+        To setup local credentials, run `gcloud auth application-default login`. More information on how to authenticate client libraries can be found at https://cloud.google.com/docs/authentication/client-libraries
+
+        Context: \(context)
+        """
+    }
+  }
 }
 
 /// Defines the configurations for authenticating Google Cloud API requests.

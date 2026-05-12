@@ -20,18 +20,27 @@ import Foundation
 
 /// A lightweight, portable, and secure HTTP request client dedicated to authentication requests.
 struct AuthHTTPClient: Sendable {
-  private let session: URLSession
+  private let sessionProvider: @Sendable () -> URLSession
 
-  /// Initializes the client with a customized session.
+  /// Initializes the client with a dynamic session provider closure.
   ///
-  /// - Parameter session: The URLSession injected for network dispatching. Defaults to an ephemeral configuration.
+  /// - Parameter sessionProvider: A closure returning a `URLSession` for network dispatching.
+  init(sessionProvider: @Sendable @escaping () -> URLSession) {
+    self.sessionProvider = sessionProvider
+  }
+
+  /// Initializes the client with a customized static session.
+  ///
+  /// - Parameter session: The static `URLSession` injected for network dispatching. Defaults to constructing an ephemeral configuration on demand.
   init(session: URLSession? = nil) {
     if let session = session {
-      self.session = session
+      self.sessionProvider = { session }
     } else {
-      // Ephemeral prevents OS from caching sensitive tokens on disk
-      let config = URLSessionConfiguration.ephemeral
-      self.session = URLSession(configuration: config)
+      self.sessionProvider = {
+        // Ephemeral prevents OS from caching sensitive tokens on disk
+        let config = URLSessionConfiguration.ephemeral
+        return URLSession(configuration: config)
+      }
     }
   }
 
@@ -143,10 +152,12 @@ struct AuthHTTPClient: Sendable {
   }
 
   private func performRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    let session = self.sessionProvider()
+
     // Support async/await directly on URLSession (handles modern platforms and Linux compatibility)
     #if os(Linux)
       return try await withCheckedThrowingContinuation { continuation in
-        let task = self.session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { data, response, error in
           if let error = error {
             continuation.resume(throwing: error)
           } else if let data = data, let response = response {
@@ -160,7 +171,7 @@ struct AuthHTTPClient: Sendable {
         task.resume()
       }
     #else
-      return try await self.session.data(for: request)
+      return try await session.data(for: request)
     #endif
   }
 
