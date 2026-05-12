@@ -12,50 +12,56 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Testing
 import Foundation
+import SystemPackage
+import Testing
+
 @testable import GoogleCloudAuth
 
 @Suite("ADC Path Resolution Tests")
 struct ADCPathTests {
-  @Test("ADC well-known path Windows", .disabled("Unimplemented"))
+  @Test("ADC well-known path Windows")
   func testADCWellKnownPathWindows() {
     let env = ["APPDATA": "C:/Users/foo"]
-    let path = resolveWellKnownADCPath(environment: env, isWindows: true)
-    #expect(path?.path == "C:/Users/foo/gcloud/application_default_credentials.json")
+    let path = resolveWellKnownADCPathWindows(environment: env)
 
-    let _ = resolveADCPath(environment: env)
-    // We can't strictly test `resolveADCPath` with `isWindows` injected easily without changing its signature,
-    // but we verify well-known path generation logic directly.
+    // Check the string directly as FilePath normalizes to the OS
+    var expected = FilePath("C:/Users/foo")
+    expected.append("gcloud")
+    expected.append("application_default_credentials.json")
+    #expect(path == expected)
   }
 
-  @Test("ADC well-known path Windows no APPDATA", .disabled("Unimplemented"))
+  @Test("ADC well-known path Windows no APPDATA")
   func testADCWellKnownPathWindowsNoAppData() {
     let env: [String: String] = [:]
-    let path = resolveWellKnownADCPath(environment: env, isWindows: true)
+    let path = resolveWellKnownADCPathWindows(environment: env)
     #expect(path == nil)
   }
 
-  @Test("ADC well-known path POSIX", .disabled("Unimplemented"))
+  @Test("ADC well-known path POSIX")
   func testADCWellKnownPathPOSIX() {
     let env = ["HOME": "/home/foo"]
-    let path = resolveWellKnownADCPath(environment: env, isWindows: false)
-    #expect(path?.path == "/home/foo/.config/gcloud/application_default_credentials.json")
+    let path = resolveWellKnownADCPathPOSIX(environment: env)
+
+    var expected = FilePath("/home/foo")
+    expected.append(".config")
+    expected.append("gcloud")
+    expected.append("application_default_credentials.json")
+    #expect(path == expected)
   }
 
-  @Test("ADC well-known path POSIX no HOME", .disabled("Unimplemented"))
+  @Test("ADC well-known path POSIX no HOME")
   func testADCWellKnownPathPOSIXNoHome() {
     let env: [String: String] = [:]
-    let path = resolveWellKnownADCPath(environment: env, isWindows: false)
+    let path = resolveWellKnownADCPathPOSIX(environment: env)
     #expect(path == nil)
   }
 
-  @Test("ADC path from environment", .disabled("Unimplemented"))
+  @Test("ADC path from environment")
   func testADCPathFromEnv() {
-    let env = [
-      "GOOGLE_APPLICATION_CREDENTIALS": "/foo/bar.json"
-    ]
+    let env = ["GOOGLE_APPLICATION_CREDENTIALS": "/foo/bar.json"]
     let path = resolveADCPath(environment: env)
-    #expect(path == .environmentVariable(URL(fileURLWithPath: "/foo/bar.json")))
+    #expect(path == .environmentVariable(FilePath("/foo/bar.json")))
   }
 }

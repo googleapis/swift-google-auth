@@ -13,21 +13,54 @@
 // limitations under the License.
 
 import Foundation
+import SystemPackage
 
 package enum ADCPath: Equatable, Sendable {
-  case environmentVariable(URL)
-  case wellKnown(URL)
+  case environmentVariable(FilePath)
+  case wellKnown(FilePath)
 }
 
 package func resolveADCPath(
   environment: [String: String] = ProcessInfo.processInfo.environment
 ) -> ADCPath? {
+  if let envCreds = environment["GOOGLE_APPLICATION_CREDENTIALS"] {
+    return .environmentVariable(FilePath(envCreds))
+  }
+
+  #if os(Windows)
+    if let wellKnown = resolveWellKnownADCPathWindows(environment: environment) {
+      return .wellKnown(wellKnown)
+    }
+  #else
+    if let wellKnown = resolveWellKnownADCPathPOSIX(environment: environment) {
+      return .wellKnown(wellKnown)
+    }
+  #endif
+
   return nil
 }
 
-package func resolveWellKnownADCPath(
-  environment: [String: String] = ProcessInfo.processInfo.environment,
-  isWindows: Bool = false
-) -> URL? {
-  return nil
+package func resolveWellKnownADCPathWindows(
+  environment: [String: String] = ProcessInfo.processInfo.environment
+) -> FilePath? {
+  guard let appData = environment["APPDATA"] else {
+    return nil
+  }
+  var path = FilePath(appData)
+  path.append("gcloud")
+  path.append("application_default_credentials.json")
+  return path
+}
+
+package func resolveWellKnownADCPathPOSIX(
+  environment: [String: String] = ProcessInfo.processInfo.environment
+) -> FilePath? {
+  guard let home = environment["HOME"] else {
+    return nil
+  }
+  var path = FilePath(home)
+  path.append(".config")
+  path.append("gcloud")
+  path.append("application_default_credentials.json")
+  return path
 }

@@ -21,7 +21,7 @@ import Testing
 
 @Suite struct ADCTest {
   @Test func adcResolveReturnsSkeletonMock() async throws {
-    let provider = try ADC.resolve()
+    let provider = try ADC.resolve(environment: [:])
     #expect(provider is MDSCredentials)
     let headers = try await provider.headers()
     #expect(headers.isEmpty)

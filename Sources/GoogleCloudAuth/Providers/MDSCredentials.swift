@@ -20,6 +20,12 @@ import Foundation
 
 /// Creates credentials backed by the local GCP Compute Engine Metadata Service (MDS).
 struct MDSCredentials: CredentialsSource, Sendable {
+  let quotaProjectID: String?
+
+  init(quotaProjectID: String? = nil) {
+    self.quotaProjectID = quotaProjectID
+  }
+
   // MARK: - CredentialsSource
 
   /// Asynchronously retrieves mock empty headers for the skeleton phase.

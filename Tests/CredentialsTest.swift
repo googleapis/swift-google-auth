@@ -64,7 +64,7 @@ import Testing
   @Test func resolveSwiftProviderForADC() async throws {
     Credentials.experimentalAuthBackend = "swift"
 
-    let credentials = try Credentials(configuration: .adc)
+    let credentials = try Credentials(configuration: .adc(environment: [:]))
 
     #expect(
       String(describing: type(of: credentials.credentialsSource)).contains("MDSCredentials")

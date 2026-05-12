@@ -24,9 +24,17 @@ let package = Package(
   products: [
     .library(name: "GoogleCloudAuth", targets: ["GoogleCloudAuth"])
   ],
-
+  dependencies: [
+    .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0")
+  ],
   targets: [
-    .target(name: "GoogleCloudAuth", dependencies: ["RustAuthCoreBridge"]),
+    .target(
+      name: "GoogleCloudAuth",
+      dependencies: [
+        "RustAuthCoreBridge",
+        .product(name: "SystemPackage", package: "swift-system")
+      ]
+    ),
     .target(
       name: "RustAuthCoreBridge",
       dependencies: ["RustAuthCoreFFI"],

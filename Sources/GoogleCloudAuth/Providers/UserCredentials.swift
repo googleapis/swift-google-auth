@@ -14,6 +14,23 @@
 
 import Foundation
 
+internal struct UserCredentialsParser: CredentialSourceParser {
+  internal static let type = "authorized_user"
+
+  internal init() {}
+
+  internal func parse(
+    config: [String: Any],
+    quotaProjectID: String?,
+    universeDomain: String?,
+    scopes: [String],
+    environment: [String: String]
+  ) throws -> any CredentialsSource {
+    // TODO(#145): Implement UserCredentials parsing and generation
+    return UserCredentials()
+  }
+}
+
 /// Creates credentials backed by a local User OAuth2 credentials JSON key file.
 struct UserCredentials: CredentialsSource, Sendable {
   // MARK: - CredentialsSource

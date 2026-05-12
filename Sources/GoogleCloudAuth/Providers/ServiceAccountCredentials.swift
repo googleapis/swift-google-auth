@@ -14,6 +14,29 @@
 
 import Foundation
 
+internal struct ServiceAccountParser: CredentialSourceParser {
+  internal static let type = "service_account"
+
+  internal init() {}
+
+  internal func parse(
+    config: [String: Any],
+    quotaProjectID: String?,
+    universeDomain: String?,
+    scopes: [String],
+    environment: [String: String]
+  ) throws -> any CredentialsSource {
+    let data = try JSONSerialization.data(withJSONObject: config, options: [])
+    return try ServiceAccountCredentials(
+      keyJSON: data,
+      quotaProjectID: quotaProjectID,
+      universeDomain: universeDomain,
+      scopes: scopes.isEmpty ? nil : scopes
+    )
+  }
+}
+
+/// Creates credentials backed by a local Service Account JSON key file.
 struct ServiceAccountCredentials: CredentialsSource, Sendable {
   private let tokenProvider: TokenCache<ContinuousClock>
   private let quotaProjectID: String?

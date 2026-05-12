@@ -34,7 +34,12 @@ public enum CredentialsError: Error, Sendable, Hashable {
 /// Defines the configurations for authenticating Google Cloud API requests.
 public enum CredentialsConfiguration: Sendable {
   /// Automatically resolves credentials using Application Default Credentials (ADC).
-  case adc
+  case adc(
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String] = [],
+    environment: [String: String]? = nil
+  )
 
   /// Returns a stub credential that provides no headers (unauthenticated).
   case anonymous
@@ -81,7 +86,7 @@ public struct Credentials: Sendable {
   let credentialsSource: any CredentialsSource
 
   /// Initializes credentials using a specific configuration (defaults to automatic ADC resolution).
-  public init(configuration: CredentialsConfiguration = .adc) throws {
+  public init(configuration: CredentialsConfiguration = .adc()) throws {
     if Self.experimentalAuthBackend == "swift" {
       self.credentialsSource = try Self.resolveSwiftCredentialsSource(configuration: configuration)
     } else {
@@ -111,8 +116,13 @@ public struct Credentials: Sendable {
     -> any CredentialsSource
   {
     switch configuration {
-    case .adc:
-      return try ADC.resolve()
+    case let .adc(quotaProjectID, universeDomain, scopes, environment):
+      return try ADC.resolve(
+        quotaProjectID: quotaProjectID,
+        universeDomain: universeDomain,
+        scopes: scopes,
+        environment: environment ?? ProcessInfo.processInfo.environment
+      )
     case .anonymous:
       return AnonymousCredentials()
     case let .serviceAccount(keyJSON, quotaProjectID, universeDomain, scopes, audience):

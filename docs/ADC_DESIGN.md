@@ -33,7 +33,7 @@ established test suites.
   or `authorized_user`).
 - **Feature Parity:** Must implement `buildAccessTokenCredentials()`,
   `buildSigner()`, and `build()` endpoints natively.
-- **Test Parity:** Must execute all 19 unit tests and 4 integration tests.
+- **Test Parity:** Must execute all applicable unit tests matching Rust parity.
 
 # Overview
 
@@ -69,20 +69,41 @@ their heavy dependencies like Crypto), we will use a dynamic registry pattern.
 ```swift
 internal protocol CredentialSourceParser: Sendable {
     static var type: String { get }
-    func parse(config: [String: Any]) throws -> CredentialsSource
+    init()
+    func parse(
+        config: [String: Any],
+        quotaProjectID: String?,
+        universeDomain: String?,
+        scopes: [String],
+        environment: [String: String]
+    ) throws -> any CredentialsSource
 }
 
-internal struct CredentialParserRegistry: Sendable {
+internal final class CredentialParserRegistry: Sendable {
+    internal static let shared = CredentialParserRegistry()
     private let parsers = Mutex<[String: any CredentialSourceParser.Type]>([:])
-    
+
     internal func register(parser: any CredentialSourceParser.Type) {
         parsers.withLock { $0[parser.type] = parser }
     }
-    
-    internal func parse(type: String, config: [String: Any]) throws -> CredentialsSource? {
+
+    internal func parse(
+        type: String,
+        config: [String: Any],
+        quotaProjectID: String?,
+        universeDomain: String?,
+        scopes: [String],
+        environment: [String: String]
+    ) throws -> (any CredentialsSource)? {
         return try parsers.withLock { parsers in
             guard let parserType = parsers[type] else { return nil }
-            return try parserType.init().parse(config: config)
+            return try parserType.init().parse(
+                config: config,
+                quotaProjectID: quotaProjectID,
+                universeDomain: universeDomain,
+                scopes: scopes,
+                environment: environment
+            )
         }
     }
 }
@@ -96,8 +117,14 @@ specific configuration struct (e.g., `ServiceAccountCredentials` or
 
 ## 3. Quota and Scopes Configuration
 
-The `CredentialsConfiguration` (or standard `Credentials` initializer with
-defaults) will support overrides:
+The `CredentialsConfiguration` enum natively handles overrides using associated values on the `.adc` case without breaking existing usage:
+
+```swift
+public enum CredentialsConfiguration: Sendable {
+  case adc(quotaProjectID: String? = nil, universeDomain: String? = nil, scopes: [String] = [])
+  case anonymous
+}
+```
 
 - `quotaProjectID`: Manually sets the quota project ID. This is overridden by
   the `GOOGLE_CLOUD_QUOTA_PROJECT` environment variable if present.
@@ -115,21 +142,20 @@ optimization and behavior.
 
 # Implementation details
 
-- `packages/auth/Sources/GoogleCloudAuth/ADCResolver.swift`: Struct containing
-  the standard AIP-4110 file loading and evaluation logic.
+- `packages/auth/Sources/GoogleCloudAuth/ADCPath.swift`: Handles AIP-4110 path precedence.
+- `packages/auth/Sources/GoogleCloudAuth/ADCResolver.swift`: Reads raw JSON file data from the resolved path.
+- `packages/auth/Sources/GoogleCloudAuth/ADC.swift`: Orchestrates JSON decoding, quota project injection, and registry delegation.
 - `packages/auth/Sources/GoogleCloudAuth/CredentialParserRegistry.swift`:
-  Contains the `CredentialParserRegistry` struct and `CredentialSourceParser`
+  Contains the `CredentialParserRegistry` class and `CredentialSourceParser`
   protocol.
-- `packages/auth/Sources/GoogleCloudAuth/CredentialsConfiguration.swift`:
-  Configuration object (or direct extensions on the `Credentials` initializer)
-  implementing `build()`, `buildSigner()`, and `buildAccessTokenCredentials()`.
+- `packages/auth/Sources/GoogleCloudAuth/Credentials.swift`: Maintains the public `CredentialsConfiguration` enum.
 
 # Testing Parity
 
 The native Swift implementation will map directly to the established test
 suites:
 
-### Unit Tests (`packages/auth/Tests/ADCResolverTests.swift`)
+### Unit Tests (`packages/auth/Tests/ADCResolverTests.swift` & `ADCPathTests.swift`)
 
 - **Path Resolution**: `adc_well_known_path_windows`,
   `adc_well_known_path_posix`, `adc_path_from_env`
@@ -139,12 +165,6 @@ suites:
   - `load_adc_success`
 - **Quota Project Override**:
   `create_access_token_credentials_fallback_to_mds_with_quota_project_override`
-
-### Integration Tests (`packages/auth/Tests/ADCIntegrationTests.swift`)
-
-- **`id_token_adc`**: Verifies that ADC resolution correctly loads credentials
-  from a temporary file specified via the environment and interacts with live
-  Google endpoints.
 
 # Alternatives considered
 
@@ -168,7 +188,7 @@ async boot sequence provides negligible performance benefits in this context.
   public API remains identical, preserving standard initializers and
   `AuthHeaders` returning formats.
 - **Risk**: Concurrency issues and data races when registering parsers.
-  **Mitigation**: Using `Synchronization.Mutex` inside a `Sendable` struct
+  **Mitigation**: Using `Synchronization.Mutex` inside a `Sendable` `final class`
   guarantees thread-safe registration and resolution across asynchronous tasks.
 
 # Corpus of information
