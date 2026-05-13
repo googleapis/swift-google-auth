@@ -16,18 +16,22 @@ import Foundation
 
 /// Represents an access token used to authenticate requests.
 struct Token: Sendable, Hashable {
-  /// The raw token string (e.g. Bearer access token).
+  /// The raw token string (e.g. access token).
   let accessToken: String
+  /// The token type (e.g. "Bearer").
+  let tokenType: String
   /// The date/time when the token will expire.
   let expirationDate: Date
 
-  /// Initializes a token with an access string and expiration.
+  /// Initializes a token with an access string, token type, and expiration.
   ///
   /// - Parameters:
   ///   - accessToken: The raw token string.
+  ///   - tokenType: The type of the token (defaults to "Bearer").
   ///   - expirationDate: The date/time when the token expires.
-  init(accessToken: String, expirationDate: Date) {
+  init(accessToken: String, tokenType: String = "Bearer", expirationDate: Date) {
     self.accessToken = accessToken
+    self.tokenType = tokenType
     self.expirationDate = expirationDate
   }
 }

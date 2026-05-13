@@ -14,6 +14,10 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
+
 internal struct UserCredentialsParser: CredentialSourceParser {
   internal static let type = "authorized_user"
 
@@ -26,22 +30,91 @@ internal struct UserCredentialsParser: CredentialSourceParser {
     scopes: [String],
     environment: [String: String]
   ) throws -> any CredentialsSource {
-    // TODO(#145): Implement UserCredentials parsing and generation
-    return UserCredentials()
+    let keyJSON = try JSONSerialization.data(withJSONObject: config)
+    return try UserCredentials(
+      keyJSON: keyJSON,
+      quotaProjectID: quotaProjectID,
+      universeDomain: universeDomain,
+      scopes: scopes
+    )
   }
 }
 
 /// Creates credentials backed by a local User OAuth2 credentials JSON key file.
 struct UserCredentials: CredentialsSource, Sendable {
-  // MARK: - CredentialsSource
+  private let cache: TokenCache<ContinuousClock>
+  private let universeDomain: String?
 
-  /// Asynchronously retrieves mock empty headers for the skeleton phase.
-  func headers() async throws -> [(String, String)] {
-    return []
+  /// Public-facing initialization matching CredentialsConfiguration.user constraints
+  init(
+    keyJSON: Data,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil
+  ) throws {
+    let key: UserAccountData
+    do {
+      let decoder = JSONDecoder()
+      decoder.keyDecodingStrategy = .convertFromSnakeCase
+      key = try decoder.decode(UserAccountData.self, from: keyJSON)
+    } catch {
+      throw CredentialsError.parseError(
+        "Failed to parse User Account key JSON: \(error.localizedDescription)"
+      )
+    }
+
+    try self.init(
+      user: key,
+      quotaProjectID: quotaProjectID,
+      universeDomain: universeDomain,
+      scopes: scopes,
+      httpClient: AuthHTTPClient(),
+      retryConfiguration: .defaultConfiguration
+    )
   }
 
-  /// Retrieves the universe domain string override.
+  /// Dependency injection for tests
+  init(
+    user: UserAccountData,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil,
+    httpClient: AuthHTTPClient,
+    retryConfiguration: RetryConfiguration
+  ) throws {
+    self.universeDomain = universeDomain
+
+    // Resolve Token URI
+    guard
+      let resolvedUri = URL(
+        string: user.tokenUri ?? "https://oauth2.googleapis.com/token"
+      )
+    else {
+      throw CredentialsError.parseError("Invalid token URI in UserAccountData")
+    }
+
+    let provider = UserAccountTokenProvider(
+      user: user,
+      scopes: scopes,
+      tokenUri: resolvedUri,
+      retryConfiguration: retryConfiguration,
+      httpClient: httpClient
+    )
+
+    self.cache = TokenCache(
+      provider: provider,
+      clock: ContinuousClock()
+    )
+  }
+
+  // MARK: - CredentialsSource
+
+  func headers() async throws -> AuthHeaders {
+    let token = try await cache.token()
+    return [("Authorization", "\(token.tokenType) \(token.accessToken)")]
+  }
+
   func universeDomain() async -> String? {
-    return nil
+    return self.universeDomain
   }
 }

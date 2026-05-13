@@ -90,6 +90,14 @@ public enum CredentialsConfiguration: Sendable {
     scopes: [String]? = nil,
     audience: String? = nil
   )
+
+  /// Custom credentials using Authorized User key files.
+  case user(
+    keyJSON: Data,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil
+  )
 }
 
 /// A type that can provide authentication headers for Google Cloud API requests.
@@ -119,7 +127,8 @@ public struct Credentials: Sendable {
   /// Initializes credentials using a specific configuration (defaults to automatic ADC resolution).
   public init(configuration: CredentialsConfiguration = .adc()) throws {
     if Self.experimentalAuthBackend == "swift" {
-      self.credentialsSource = try Self.resolveSwiftCredentialsSource(configuration: configuration)
+      self.credentialsSource = try Self.resolveSwiftCredentialsSource(
+        configuration: configuration)
     } else {
       self.credentialsSource = try Self.resolveRustCredentialsSource(configuration: configuration)
     }
@@ -163,6 +172,13 @@ public struct Credentials: Sendable {
         universeDomain: universeDomain,
         scopes: scopes,
         audience: audience
+      )
+    case let .user(keyJSON, quotaProjectID, universeDomain, scopes):
+      return try UserCredentials(
+        keyJSON: keyJSON,
+        quotaProjectID: quotaProjectID,
+        universeDomain: universeDomain,
+        scopes: scopes
       )
     }
   }

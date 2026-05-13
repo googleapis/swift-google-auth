@@ -32,6 +32,9 @@ struct RustCredentialsSource: CredentialsSource {
     case .serviceAccount:
       throw RustAuthCoreBridge.AuthError.Initialize(
         "Service Account configurations are not supported on the FFI backend.")
+    case .user:
+      throw RustAuthCoreBridge.AuthError.Initialize(
+        "User Account configurations are not supported on the FFI backend.")
     }
   }
 

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import Foundation
+import RustAuthCoreBridge
 import Testing
 
 @testable import GoogleCloudAuth
@@ -69,5 +70,48 @@ import Testing
     #expect(
       String(describing: type(of: credentials.credentialsSource)).contains("MDSCredentials")
     )
+  }
+
+  @Test func resolveRustProviderForUserCredentialsThrows() async throws {
+    // Force backend to Rust
+    Credentials.experimentalAuthBackend = "rust"
+
+    let mockJSON = """
+      {
+        "client_id": "test-client-id",
+        "client_secret": "test-client-secret",
+        "refresh_token": "test-refresh-token",
+        "type": "authorized_user"
+      }
+      """
+    let dataData = mockJSON.data(using: .utf8)!
+
+    #expect(throws: RustAuthCoreBridge.AuthError.self) {
+      _ = try Credentials(configuration: .user(keyJSON: dataData))
+    }
+  }
+
+  @Test func resolveSwiftProviderForUserCredentials() async throws {
+    // Force backend to Swift
+    Credentials.experimentalAuthBackend = "swift"
+
+    let mockJSON = """
+      {
+        "client_id": "test-client-id",
+        "client_secret": "test-client-secret",
+        "refresh_token": "test-refresh-token",
+        "type": "authorized_user"
+      }
+      """
+    let dataData = mockJSON.data(using: .utf8)!
+
+    let credentials = try Credentials(configuration: .user(keyJSON: dataData))
+
+    #expect(
+      String(describing: type(of: credentials.credentialsSource)).contains("UserCredentials")
+    )
+
+    let ud = await credentials.universeDomain()
+    #expect(ud == nil)
   }
 }

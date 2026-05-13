@@ -17,6 +17,7 @@ import Synchronization
 final class CallCounter: Sendable {
   private let _count = Mutex(0)
 
+  @discardableResult
   func increment() -> Int {
     return _count.withLock { value in
       value += 1

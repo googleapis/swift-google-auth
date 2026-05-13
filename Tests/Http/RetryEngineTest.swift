@@ -23,37 +23,25 @@ import Testing
 
 // MARK: - Thread-Safe Concurrency Counter for Swift 6 @Sendable Captures
 
-private actor AttemptCounter {
-  private var value = 0
-
-  func increment() {
-    self.value += 1
-  }
-
-  var count: Int {
-    self.value
-  }
-}
-
 // MARK: - Suite: RetryEngine Test
 
 @Suite struct RetryEngineTest {
   private let testURL = URL(string: "https://example.com")!
   @Test func retrySucceedsOnFirstAttempt() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let result = try await RetryEngine.retry(
       isRetryable: { _ in true }
     ) {
-      await attempts.increment()
+      attempts.increment()
       return "success"
     }
 
     #expect(result == "success")
-    #expect(await attempts.count == 1)
+    #expect(attempts.getCount() == 1)
   }
 
   @Test func retryRecoversOnTransientError() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let config = RetryConfiguration(
       maxAttempts: 3,
       initialDelay: .seconds(0.01),
@@ -70,8 +58,8 @@ private actor AttemptCounter {
         return false
       }
     ) {
-      await attempts.increment()
-      if await attempts.count < 3 {
+      attempts.increment()
+      if attempts.getCount() < 3 {
         throw AuthHTTPError.unsuccessfulResponse(
           response: HTTPURLResponse(
             url: self.testURL, statusCode: 503, httpVersion: nil, headerFields: nil)!, data: Data())
@@ -80,11 +68,11 @@ private actor AttemptCounter {
     }
 
     #expect(result == "recovered")
-    #expect(await attempts.count == 3)
+    #expect(attempts.getCount() == 3)
   }
 
   @Test func retryFailsOnPermanentError() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let config = RetryConfiguration(
       maxAttempts: 3,
       initialDelay: .seconds(0.01),
@@ -102,18 +90,18 @@ private actor AttemptCounter {
           return false
         }
       ) {
-        await attempts.increment()
+        attempts.increment()
         throw AuthHTTPError.unsuccessfulResponse(
           response: HTTPURLResponse(
             url: self.testURL, statusCode: 404, httpVersion: nil, headerFields: nil)!, data: Data())
       }
     }
 
-    #expect(await attempts.count == 1)
+    #expect(attempts.getCount() == 1)
   }
 
   @Test func retryExhaustsAttempts() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let config = RetryConfiguration(
       maxAttempts: 2,
       initialDelay: .seconds(0.01),
@@ -131,14 +119,14 @@ private actor AttemptCounter {
           return false
         }
       ) {
-        await attempts.increment()
+        attempts.increment()
         throw AuthHTTPError.unsuccessfulResponse(
           response: HTTPURLResponse(
             url: self.testURL, statusCode: 503, httpVersion: nil, headerFields: nil)!, data: Data())
       }
     }
 
-    #expect(await attempts.count == 2)
+    #expect(attempts.getCount() == 2)
   }
 
   @Test func retryExitsImmediatelyOnCancellation() async throws {
@@ -166,7 +154,7 @@ private actor AttemptCounter {
   }
 
   @Test func retryObeysMaxDelayCap() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let config = RetryConfiguration(
       maxAttempts: 4,
       initialDelay: .seconds(0.01),
@@ -181,21 +169,21 @@ private actor AttemptCounter {
         configuration: config,
         isRetryable: { _ in true }
       ) {
-        await attempts.increment()
+        attempts.increment()
         throw URLError(.badServerResponse)
       }
     }
 
     let duration = Date().timeIntervalSince(startTime)
 
-    #expect(await attempts.count == 4)
+    #expect(attempts.getCount() == 4)
     // Delays should be: ~0.01, ~0.02, ~0.02 (capped)
     // With full jitter, total duration can be very short, so we only check upper bound.
     #expect(duration <= 0.1)
   }
 
   @Test func retryCancelledDuringSleep() async throws {
-    let attempts = AttemptCounter()
+    let attempts = CallCounter()
     let clock = TestClock()
     let config = RetryConfiguration(
       maxAttempts: 3,
@@ -210,7 +198,7 @@ private actor AttemptCounter {
         clock: clock,
         isRetryable: { _ in true }
       ) {
-        await attempts.increment()
+        attempts.increment()
         throw URLError(.badServerResponse)
       }
     }
@@ -225,7 +213,7 @@ private actor AttemptCounter {
       try await task.value
     }
 
-    #expect(await attempts.count == 1)
+    #expect(attempts.getCount() == 1)
   }
 }
 
