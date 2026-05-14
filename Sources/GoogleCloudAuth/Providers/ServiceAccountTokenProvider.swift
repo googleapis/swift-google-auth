@@ -13,11 +13,30 @@
 // limitations under the License.
 
 import Foundation
+import JWTKit
+
+/// The JWT claims structure for generating a Google Cloud Service Account access token.
+struct ServiceAccountClaims: JWTPayload, Equatable, Sendable {
+  let iss: IssuerClaim
+  let sub: SubjectClaim
+  let scope: String?
+  let aud: AudienceClaim?
+  let iat: IssuedAtClaim
+  let exp: ExpirationClaim
+
+  func verify(using algorithm: some JWTAlgorithm) async throws {
+    // These claims are generated locally for remote Google servers.
+    // Local verification is not required.
+  }
+}
 
 struct ServiceAccountTokenProvider: TokenProvider, Sendable {
   let key: ServiceAccountData
   let scopes: [String]?
   let audience: String?
+
+  private let clockSkewFudgeSeconds: TimeInterval = -10
+  private let tokenLifetimeSeconds: TimeInterval = 3600
 
   init(key: ServiceAccountData, scopes: [String]? = nil, audience: String? = nil) {
     self.key = key
@@ -26,18 +45,38 @@ struct ServiceAccountTokenProvider: TokenProvider, Sendable {
   }
 
   func fetchToken() async throws -> Token {
-    // Dummy skeleton fetch returning empty/dummy token
-    return Token(
-      accessToken: "skeleton-mock-token", expirationDate: Date(timeIntervalSinceNow: 3600))
-  }
-}
+    let now = Date()
+    let iatDate = now.addingTimeInterval(clockSkewFudgeSeconds)
+    let expDate = iatDate.addingTimeInterval(tokenLifetimeSeconds)
 
-struct ServiceAccountTokenGenerator: Sendable {
-  let key: ServiceAccountData
-  let scopes: String?
-  let audience: String?
+    let claims = ServiceAccountClaims(
+      iss: IssuerClaim(value: key.clientEmail),
+      sub: SubjectClaim(value: key.clientEmail),
+      scope: scopes?.joined(separator: " "),
+      aud: audience.map { AudienceClaim(value: [$0]) },
+      iat: IssuedAtClaim(value: iatDate),
+      exp: ExpirationClaim(value: expDate)
+    )
 
-  func generate(iat: Int64, exp: Int64) throws -> String {
-    return "skeleton-mock-jwt"
+    let privateKey: Insecure.RSA.PrivateKey
+    do {
+      privateKey = try Insecure.RSA.PrivateKey(pem: key.privateKey)
+    } catch {
+      throw CredentialsError.parseError(
+        "Failed to parse Service Account RSA Private Key: \(error.localizedDescription)")
+    }
+
+    let keys = JWTKeyCollection()
+    let kid = JWKIdentifier(string: key.privateKeyID)
+    await keys.add(rsa: privateKey, digestAlgorithm: .sha256, kid: kid)
+
+    let signedJWT: String
+    do {
+      signedJWT = try await keys.sign(claims, kid: kid)
+    } catch {
+      throw CredentialsError.parseError("RSA JWT signing failed: \(error.localizedDescription)")
+    }
+
+    return Token(accessToken: signedJWT, expirationDate: expDate)
   }
 }

@@ -25,14 +25,17 @@ let package = Package(
     .library(name: "GoogleCloudAuth", targets: ["GoogleCloudAuth"])
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0")
+    .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0"),
+    .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0")
   ],
+
   targets: [
     .target(
       name: "GoogleCloudAuth",
       dependencies: [
         "RustAuthCoreBridge",
-        .product(name: "SystemPackage", package: "swift-system")
+        .product(name: "SystemPackage", package: "swift-system"),
+        .product(name: "JWTKit", package: "jwt-kit")
       ]
     ),
     .target(
@@ -49,7 +52,7 @@ let package = Package(
     ),
     .testTarget(
       name: "GoogleCloudAuthTests",
-      dependencies: ["GoogleCloudAuth"],
+      dependencies: ["GoogleCloudAuth", .product(name: "JWTKit", package: "jwt-kit")],
       path: "Tests"),
   ]
 )

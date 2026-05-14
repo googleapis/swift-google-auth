@@ -17,29 +17,6 @@ import Testing
 
 @testable import GoogleCloudAuth
 
-// MARK: - Mock Time Source
-
-private final class MockTimeSource: TimeSource, @unchecked Sendable {
-  private let lock = NSLock()
-  private var currentDate: Date
-
-  init(currentDate: Date) {
-    self.currentDate = currentDate
-  }
-
-  var now: Date {
-    lock.lock()
-    defer { lock.unlock() }
-    return currentDate
-  }
-
-  func advance(by duration: TimeInterval) {
-    lock.lock()
-    currentDate = currentDate.addingTimeInterval(duration)
-    lock.unlock()
-  }
-}
-
 // MARK: - Mock Concurrency-Safe Token Provider Actor
 
 private actor MockTokenProvider: TokenProvider {

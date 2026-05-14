@@ -13,25 +13,22 @@
 // limitations under the License.
 
 import Foundation
+import Synchronization
+@testable import GoogleCloudAuth
 
-struct JWSHeader: Codable, Sendable {
-  let alg: String
-  let typ: String
-  let kid: String
+/// A thread-safe, strict concurrency-compliant time source for testing token caching and expirations natively.
+final class MockTimeSource: TimeSource, Sendable {
+  private let state: Mutex<Date>
 
-  /// Initialize using a RSA256 Key Id.
-  public init(rs256 kid: String) {
-    self.alg = "RS256"
-    self.typ = "JWT"
-    self.kid = kid
+  init(currentDate: Date) {
+    self.state = Mutex(currentDate)
   }
-}
 
-struct JWSClaims: Codable, Sendable {
-  let iss: String
-  let sub: String
-  let scope: String?
-  let aud: String?
-  let iat: Int64
-  let exp: Int64
+  var now: Date {
+    state.withLock { $0 }
+  }
+
+  func advance(by duration: TimeInterval) {
+    state.withLock { $0 = $0.addingTimeInterval(duration) }
+  }
 }
