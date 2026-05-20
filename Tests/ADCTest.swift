@@ -27,4 +27,17 @@ import Testing
     let ud = await provider.universeDomain()
     #expect(ud == nil)
   }
+
+  @Test func adcPropagatesEnvironmentToMDS() async throws {
+    let customHost = "custom-metadata.local"
+    let environment = ["GCE_METADATA_HOST": customHost]
+    let provider = try ADC.resolve(environment: environment)
+
+    guard let mdsCreds = provider as? MDSCredentials else {
+      Issue.record("Expected MDSCredentials")
+      return
+    }
+
+    #expect(mdsCreds.provider.environment["GCE_METADATA_HOST"] == customHost)
+  }
 }
