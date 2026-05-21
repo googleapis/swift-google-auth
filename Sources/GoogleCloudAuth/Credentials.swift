@@ -62,6 +62,44 @@ extension CredentialsError: LocalizedError {
   }
 }
 
+/// Represents the access specifier for a service account based token,
+/// specifying either OAuth 2.0 scopes or a JWT audience.
+///
+/// It ensures that only one of these access specifiers can be applied
+/// for a given credential setup.
+///
+/// See [AIP-4111: Self-Signed JWTs](https://google.aip.dev/auth/4111) and
+/// [OAuth 2.0 Scopes](https://developers.google.com/identity/protocols/oauth2/scopes).
+public enum AccessSpecifier: Sendable, Hashable {
+  /// Use `AccessSpecifier.audience` for setting the audience in the token.
+  ///
+  /// `aud` is a JWT claim specifying the intended recipient of the token, i.e., a service.
+  /// Only one of audience or scopes can be specified for a credentials configuration.
+  ///
+  /// See [AIP-4111: Self-Signed JWTs](https://google.aip.dev/auth/4111).
+  case audience(String)
+
+  /// Use `AccessSpecifier.scopes` for setting scopes in the token.
+  ///
+  /// `scopes` is a JWT claim specifying requested permission(s) for the token.
+  /// Only one of audience or scopes can be specified for a credentials configuration.
+  ///
+  /// Scopes define the *permissions being requested* for this specific session
+  /// when interacting with a service. For example, `https://www.googleapis.com/auth/devstorage.read_write`.
+  /// IAM permissions, on the other hand, define the *underlying capabilities*
+  /// the service account possesses within a system. For example, `storage.buckets.delete`.
+  ///
+  /// When a token generated with specific scopes is used, the request must be permitted
+  /// by both the service account's underlying IAM permissions and the scopes requested
+  /// for the token. Therefore, scopes act as an additional restriction on what the token
+  /// can be used for. Please see the [Service Account Authorization](https://cloud.google.com/compute/docs/access/service-accounts#authorization)
+  /// guide to learn more about scopes and IAM permissions.
+  ///
+  /// See [AIP-4111: Self-Signed JWTs](https://google.aip.dev/auth/4111) and
+  /// [OAuth 2.0 Scopes](https://developers.google.com/identity/protocols/oauth2/scopes).
+  case scopes([String])
+}
+
 /// Defines the configurations for authenticating Google Cloud API requests.
 public enum CredentialsConfiguration: Sendable {
   /// Automatically resolves credentials using Application Default Credentials (ADC).
@@ -81,14 +119,12 @@ public enum CredentialsConfiguration: Sendable {
   ///   - keyJSON: The raw Service Account JSON key file contents.
   ///   - quotaProjectID: A custom project ID used for billing and quota.
   ///   - universeDomain: Google Cloud universe domain override.
-  ///   - scopes: Optional scopes requested (exchanged locally via JWT claims).
-  ///   - audience: Optional custom target audience override.
+  ///   - accessSpecifier: Optional access specifier (either scopes or audience).
   case serviceAccount(
     keyJSON: Data,
     quotaProjectID: String? = nil,
     universeDomain: String? = nil,
-    scopes: [String]? = nil,
-    audience: String? = nil
+    accessSpecifier: AccessSpecifier? = nil
   )
 
   /// Custom credentials using Authorized User key files.
@@ -165,13 +201,12 @@ public struct Credentials: Sendable {
       )
     case .anonymous:
       return AnonymousCredentials()
-    case let .serviceAccount(keyJSON, quotaProjectID, universeDomain, scopes, audience):
+    case let .serviceAccount(keyJSON, quotaProjectID, universeDomain, accessSpecifier):
       return try ServiceAccountCredentials(
         keyJSON: keyJSON,
         quotaProjectID: quotaProjectID,
         universeDomain: universeDomain,
-        scopes: scopes,
-        audience: audience
+        accessSpecifier: accessSpecifier
       )
     case let .user(keyJSON, quotaProjectID, universeDomain, scopes):
       return try UserCredentials(

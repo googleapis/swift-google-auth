@@ -27,11 +27,12 @@ internal struct ServiceAccountParser: CredentialSourceParser {
     environment: [String: String]
   ) throws -> any CredentialsSource {
     let data = try JSONSerialization.data(withJSONObject: config, options: [])
+    let accessSpecifier = scopes.isEmpty ? nil : AccessSpecifier.scopes(scopes)
     return try ServiceAccountCredentials(
       keyJSON: data,
       quotaProjectID: quotaProjectID,
       universeDomain: universeDomain,
-      scopes: scopes.isEmpty ? nil : scopes
+      accessSpecifier: accessSpecifier
     )
   }
 }
@@ -46,8 +47,7 @@ struct ServiceAccountCredentials: CredentialsSource, Sendable {
     keyJSON: Data,
     quotaProjectID: String? = nil,
     universeDomain: String? = nil,
-    scopes: [String]? = nil,
-    audience: String? = nil
+    accessSpecifier: AccessSpecifier? = nil
   ) throws {
     let key: ServiceAccountData
     do {
@@ -56,7 +56,7 @@ struct ServiceAccountCredentials: CredentialsSource, Sendable {
       throw CredentialsError.parseError(
         "Failed to parse Service Account key JSON: \(error.localizedDescription)")
     }
-    let provider = ServiceAccountTokenProvider(key: key, scopes: scopes, audience: audience)
+    let provider = ServiceAccountTokenProvider(key: key, accessSpecifier: accessSpecifier)
 
     self.tokenProvider = TokenCache(provider: provider)
     self.quotaProjectID = quotaProjectID

@@ -34,18 +34,39 @@ struct ServiceAccountTokenProvider: TokenProvider, Sendable {
   let key: ServiceAccountData
   let scopes: [String]?
   let audience: String?
+  let timeSource: any TimeSource
 
   private let clockSkewFudgeSeconds: TimeInterval = -10
   private let tokenLifetimeSeconds: TimeInterval = 3600
 
-  init(key: ServiceAccountData, scopes: [String]? = nil, audience: String? = nil) {
+  private static let defaultScope = "https://www.googleapis.com/auth/cloud-platform"
+
+  init(
+    key: ServiceAccountData,
+    accessSpecifier: AccessSpecifier? = nil,
+    timeSource: any TimeSource = SystemTimeSource()
+  ) {
     self.key = key
-    self.scopes = scopes
-    self.audience = audience
+    self.timeSource = timeSource
+
+    let resolvedSpecifier = accessSpecifier ?? .scopes([Self.defaultScope])
+
+    switch resolvedSpecifier {
+    case .audience(let aud):
+      self.scopes = nil
+      self.audience = aud
+    case .scopes(let sc):
+      if sc.isEmpty {
+        self.scopes = [Self.defaultScope]
+      } else {
+        self.scopes = sc
+      }
+      self.audience = nil
+    }
   }
 
   func fetchToken() async throws -> Token {
-    let now = Date()
+    let now = timeSource.now
     let iatDate = now.addingTimeInterval(clockSkewFudgeSeconds)
     let expDate = iatDate.addingTimeInterval(tokenLifetimeSeconds)
 

@@ -175,6 +175,9 @@ struct ServiceAccountTests {
 
     #expect(decodedClaims.iss.value == "test-client-email@gserviceaccount.com")
     #expect(decodedClaims.sub.value == "test-client-email@gserviceaccount.com")
+    #expect(decodedClaims.scope == "https://www.googleapis.com/auth/cloud-platform")
+    #expect(
+      decodedClaims.aud == nil, "Audience claim MUST be omitted/null when scopes are configured!")
     #expect(
       decodedClaims.exp.value.timeIntervalSince(decodedClaims.iat.value) == 3600,
       "JWT token claims expiration MUST be exactly 3600 seconds after iat!")
@@ -267,7 +270,8 @@ struct ServiceAccountTests {
   func testJWSAssertionWithAudience() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let customAud = "https://pubsub.googleapis.com/"
-    let credentials = try ServiceAccountCredentials(keyJSON: mockKeyJSON, audience: customAud)
+    let credentials = try ServiceAccountCredentials(
+      keyJSON: mockKeyJSON, accessSpecifier: .audience(customAud))
     let headers = try await credentials.headers()
 
     guard
@@ -295,7 +299,7 @@ struct ServiceAccountTests {
   func testJWSAssertionWithCustomScopes() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let credentials = try ServiceAccountCredentials(
-      keyJSON: mockKeyJSON, scopes: ["scopeA", "scopeB"])
+      keyJSON: mockKeyJSON, accessSpecifier: .scopes(["scopeA", "scopeB"]))
     let headers = try await credentials.headers()
 
     guard
@@ -315,5 +319,25 @@ struct ServiceAccountTests {
     #expect(decodedClaims.scope == "scopeA scopeB")
     #expect(
       decodedClaims.aud == nil, "Audience claim MUST be omitted/null when scopes are configured!")
+  }
+
+  @Test("Service Account Token Provider returns token with correct expiration date")
+  func testServiceAccountTokenVerifyExpiryTime() async throws {
+    let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
+    let key = try JSONDecoder().decode(ServiceAccountData.self, from: mockKeyJSON)
+
+    let mockDate = Date(timeIntervalSince1970: 1700000000)
+    let timeSource = MockTimeSource(currentDate: mockDate)
+
+    let provider = ServiceAccountTokenProvider(key: key, timeSource: timeSource)
+    let token = try await provider.fetchToken()
+
+    // iat is now - 10s. exp is iat + 3600s.
+    // So exp is now - 10s + 3600s = now + 3590s.
+    let expectedExpiry = mockDate.addingTimeInterval(-10).addingTimeInterval(3600)
+
+    #expect(
+      token.expirationDate == expectedExpiry,
+      "Expected expiration date \(expectedExpiry), got \(token.expirationDate)")
   }
 }
