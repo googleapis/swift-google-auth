@@ -14,36 +14,10 @@
 
 import Foundation
 import Testing
-
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
-
 @testable import GoogleCloudAuth
-
-private final class MockURLProtocol: URLProtocol {
-  nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (URLResponse, Data))?
-
-  override class func canInit(with request: URLRequest) -> Bool { true }
-  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-  override func startLoading() {
-    guard let handler = Self.requestHandler else {
-      fatalError("Handler is not set.")
-    }
-
-    do {
-      let (response, data) = try handler(request)
-      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-      client?.urlProtocol(self, didLoad: data)
-      client?.urlProtocolDidFinishLoading(self)
-    } catch {
-      client?.urlProtocol(self, didFailWithError: error)
-    }
-  }
-
-  override func stopLoading() {}
-}
 
 @Suite(.serialized) struct UserCredentialsTest {
   private let mockSession: URLSession
@@ -153,7 +127,7 @@ private final class MockURLProtocol: URLProtocol {
       #expect(request.httpMethod == "POST")
 
       // Read request body and verify scopes are space-separated
-      guard let bodyData = request.httpBody else {
+      guard let bodyData = request.bodyData else {
         fatalError("Expected HTTP body")
       }
       let decoder = JSONDecoder()
@@ -398,4 +372,56 @@ private final class MockURLProtocol: URLProtocol {
     let finalCount = requestCount.getCount()
     #expect(finalCount == 1)
   }
+}
+
+private extension URLRequest {
+  // On macOS, the request body is dispatched via a `httpBodyStream`. This is overkill, but we need
+  // to make the code portable ourselves.
+  var bodyData: Data? {
+    if let httpBody = httpBody {
+      return httpBody
+    }
+    guard let stream = httpBodyStream else {
+      return nil
+    }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    let bufferSize = 1024
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+    defer { buffer.deallocate() }
+    while stream.hasBytesAvailable {
+      let read = stream.read(buffer, maxLength: bufferSize)
+      if read > 0 {
+        data.append(buffer, count: read)
+      } else {
+        break
+      }
+    }
+    return data
+  }
+}
+
+private final class MockURLProtocol: URLProtocol {
+  nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (URLResponse, Data))?
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    guard let handler = Self.requestHandler else {
+      fatalError("Handler is not set.")
+    }
+
+    do {
+      let (response, data) = try handler(request)
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: data)
+      client?.urlProtocolDidFinishLoading(self)
+    } catch {
+      client?.urlProtocol(self, didFailWithError: error)
+    }
+  }
+
+  override func stopLoading() {}
 }

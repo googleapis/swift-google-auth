@@ -26,28 +26,15 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0"),
-    .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0")
+    .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
   ],
 
   targets: [
     .target(
       name: "GoogleCloudAuth",
       dependencies: [
-        "RustAuthCoreBridge",
         .product(name: "SystemPackage", package: "swift-system"),
-        .product(name: "JWTKit", package: "jwt-kit")
-      ]
-    ),
-    .target(
-      name: "RustAuthCoreBridge",
-      dependencies: ["RustAuthCoreFFI"],
-      swiftSettings: [.swiftLanguageMode(.v5)]
-    ),
-    .target(
-      name: "RustAuthCoreFFI",
-      linkerSettings: [
-        .linkedLibrary("rust_auth_core"),
-        .unsafeFlags(["-L", "\(Context.packageDirectory)/../../target/release"]),
+        .product(name: "JWTKit", package: "jwt-kit"),
       ]
     ),
     .testTarget(

@@ -151,23 +151,12 @@ protocol CredentialsSource: Sendable {
 
 /// The public entry point to authenticate Google Cloud API requests.
 public struct Credentials: Sendable {
-  /// Configuration switch for the experimental authentication backend.
-  /// Can be set to "rust" or "swift". Defaults to "rust" (FFI-based).
-  /// Can be initialized via `GOOGLE_CLOUD_SWIFT_EXPERIMENTAL_AUTH` environment variable.
-  public nonisolated(unsafe) static var experimentalAuthBackend: String = {
-    ProcessInfo.processInfo.environment["GOOGLE_CLOUD_SWIFT_EXPERIMENTAL_AUTH"] ?? "rust"
-  }()
-
   let credentialsSource: any CredentialsSource
 
   /// Initializes credentials using a specific configuration (defaults to automatic ADC resolution).
   public init(configuration: CredentialsConfiguration = .adc()) throws {
-    if Self.experimentalAuthBackend == "swift" {
-      self.credentialsSource = try Self.resolveSwiftCredentialsSource(
-        configuration: configuration)
-    } else {
-      self.credentialsSource = try Self.resolveRustCredentialsSource(configuration: configuration)
-    }
+    self.credentialsSource = try Self.resolveCredentialsSource(
+      configuration: configuration)
   }
 
   /// Asynchronously retrieves the request headers required to authenticate a request.
@@ -182,13 +171,7 @@ public struct Credentials: Sendable {
 
   // MARK: - Backend Resolvers
 
-  private static func resolveRustCredentialsSource(configuration: CredentialsConfiguration) throws
-    -> any CredentialsSource
-  {
-    return try RustCredentialsSource(configuration: configuration)
-  }
-
-  private static func resolveSwiftCredentialsSource(configuration: CredentialsConfiguration) throws
+  private static func resolveCredentialsSource(configuration: CredentialsConfiguration) throws
     -> any CredentialsSource
   {
     switch configuration {
