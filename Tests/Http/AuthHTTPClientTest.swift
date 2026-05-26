@@ -13,11 +13,10 @@
 // limitations under the License.
 
 import Foundation
-import Testing
-
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif
+import Testing
 
 @testable import GoogleCloudAuth
 
@@ -57,15 +56,6 @@ private final class MockURLProtocol: URLProtocol {
     }
   }
 
-  override func stopLoading() {}
-}
-
-private final class MockEmptyResponseProtocol: URLProtocol {
-  override class func canInit(with request: URLRequest) -> Bool { true }
-  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-  override func startLoading() {
-    client?.urlProtocolDidFinishLoading(self)
-  }
   override func stopLoading() {}
 }
 
@@ -285,11 +275,17 @@ private final class MockEmptyResponseProtocol: URLProtocol {
   @Test func clientThrowsOnEmptyHTTPResponse() async throws {
     let targetURL = URL(string: "https://oauth2.googleapis.com/token")!
 
-    let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [MockEmptyResponseProtocol.self]
-    let session = URLSession(configuration: config)
-    let client = AuthHTTPClient(session: session)
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil as String?,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, Data())
+    }
 
+    let client = AuthHTTPClient(session: self.mockSession)
     await #expect(throws: AuthHTTPError.self) {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
