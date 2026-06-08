@@ -21,7 +21,7 @@ import Testing
 @Suite("ADC Path Resolution Tests")
 struct ADCPathTests {
   @Test("ADC well-known path Windows")
-  func testADCWellKnownPathWindows() {
+  func wellKnownPathWindows() {
     let env = ["APPDATA": "C:/Users/foo"]
     let path = resolveWellKnownADCPathWindows(environment: env)
 
@@ -33,14 +33,14 @@ struct ADCPathTests {
   }
 
   @Test("ADC well-known path Windows no APPDATA")
-  func testADCWellKnownPathWindowsNoAppData() {
+  func wellKnownPathWindowsNoAppData() {
     let env: [String: String] = [:]
     let path = resolveWellKnownADCPathWindows(environment: env)
     #expect(path == nil)
   }
 
   @Test("ADC well-known path POSIX")
-  func testADCWellKnownPathPOSIX() {
+  func wellKnownPathPOSIX() {
     let env = ["HOME": "/home/foo"]
     let path = resolveWellKnownADCPathPOSIX(environment: env)
 
@@ -52,14 +52,14 @@ struct ADCPathTests {
   }
 
   @Test("ADC well-known path POSIX no HOME")
-  func testADCWellKnownPathPOSIXNoHome() {
+  func wellKnownPathPOSIXNoHome() {
     let env: [String: String] = [:]
     let path = resolveWellKnownADCPathPOSIX(environment: env)
     #expect(path == nil)
   }
 
   @Test("ADC path from environment")
-  func testADCPathFromEnv() {
+  func pathFromEnv() {
     let env = ["GOOGLE_APPLICATION_CREDENTIALS": "/foo/bar.json"]
     let path = resolveADCPath(environment: env)
     #expect(path == .environmentVariable(FilePath("/foo/bar.json")))

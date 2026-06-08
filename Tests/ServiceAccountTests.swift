@@ -69,7 +69,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account Key debug representation censors the private key")
-  func testServiceAccountDataDebugRepresentation() throws {
+  func dataDebugRepresentation() throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let key = try JSONDecoder().decode(ServiceAccountData.self, from: mockKeyJSON)
     let debugDescription = String(reflecting: key)
@@ -78,7 +78,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account Credentials returns standard headers successfully")
-  func testHeadersSuccessWithoutQuotaProject() async throws {
+  func successWithoutQuotaProject() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let credentials = try ServiceAccountCredentials(keyJSON: mockKeyJSON)
     let headers = try await credentials.headers()
@@ -89,7 +89,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account Credentials injects custom billing quota project header")
-  func testHeadersSuccessWithQuotaProject() async throws {
+  func headersSuccessWithQuotaProject() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let credentials = try ServiceAccountCredentials(
       keyJSON: mockKeyJSON, quotaProjectID: "quota-proj-123")
@@ -102,7 +102,7 @@ struct ServiceAccountTests {
 
   @Test(
     "ServiceAccount initialization successfully accepts PKCS#1 private keys natively")
-  func testPKCS1KeyBuildSucceeds() async throws {
+  func pkcs1KeyBuildSucceeds() async throws {
     let pkcs1PEM = """
       -----BEGIN RSA PRIVATE KEY-----
       MIIEowIBAAKCAQEAo5bIphEnhUMJwrj0fgIFfdMfFcCu45iwbiGcRQj+DNcCAhA3
@@ -154,7 +154,7 @@ struct ServiceAccountTests {
   @Test(
     "JWS JWT Token assertion is generated successfully with correct RS256 headers and strict 3600s lifetime"
   )
-  func testPKCS8KeyGenerationSuccess() async throws {
+  func pkcs8KeyGenerationSuccess() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let credentials = try ServiceAccountCredentials(keyJSON: mockKeyJSON)
     let headers = try await credentials.headers()
@@ -184,7 +184,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Access tokens are successfully cached in memory to prevent redundant regenerations")
-  func testTokenAndHeaderCaching() async throws {
+  func tokenAndHeaderCaching() async throws {
     let clock = TestClock()
     let now = Date()
     let timeSource = MockTimeSource(currentDate: now)
@@ -215,7 +215,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Universe domain parses correctly from key JSON and respects explicit overrides")
-  func testUniverseDomainParsingAndOverrides() async throws {
+  func universeDomainParsingAndOverrides() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
 
     // Default universe domain resolving from key JSON
@@ -231,7 +231,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account JWS signing fails gracefully when given invalid private key PEM format")
-  func testInvalidKeySigningFailure() async throws {
+  func invalidKeySigningFailure() async throws {
     let badKeyJSON = """
       {
         "type": "service_account",
@@ -253,7 +253,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account credentials initialization throws decoding error when given invalid JSON")
-  func testInvalidJSONParsingFailure() async throws {
+  func invalidJSONParsingFailure() async throws {
     let invalidJSON = "{ \"invalid\": \"json\" }".data(using: .utf8)!
     let error = #expect(throws: CredentialsError.self) {
       _ = try ServiceAccountCredentials(keyJSON: invalidJSON)
@@ -267,7 +267,7 @@ struct ServiceAccountTests {
   @Test(
     "JWS assertion contains correct audience claim and omits scopes claim when configured with custom target audience"
   )
-  func testJWSAssertionWithAudience() async throws {
+  func jwsAssertionWithAudience() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let customAud = "https://pubsub.googleapis.com/"
     let credentials = try ServiceAccountCredentials(
@@ -296,7 +296,7 @@ struct ServiceAccountTests {
   @Test(
     "JWS assertion contains space-separated scope claim and omits audience claim when configured with scopes list"
   )
-  func testJWSAssertionWithCustomScopes() async throws {
+  func jwsAssertionWithCustomScopes() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let credentials = try ServiceAccountCredentials(
       keyJSON: mockKeyJSON, accessSpecifier: .scopes(["scopeA", "scopeB"]))
@@ -322,7 +322,7 @@ struct ServiceAccountTests {
   }
 
   @Test("Service Account Token Provider returns token with correct expiration date")
-  func testServiceAccountTokenVerifyExpiryTime() async throws {
+  func serviceAccountTokenVerifyExpiryTime() async throws {
     let mockKeyJSON = try ServiceAccountTests.generateMockKeyJSON()
     let key = try JSONDecoder().decode(ServiceAccountData.self, from: mockKeyJSON)
 

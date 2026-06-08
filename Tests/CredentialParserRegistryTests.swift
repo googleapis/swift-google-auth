@@ -43,7 +43,7 @@ struct MockParser: CredentialSourceParser {
 @Suite("Credential Parser Registry Tests")
 struct CredentialParserRegistryTests {
   @Test("Registry allows dynamic registration and parsing")
-  func testRegistryDynamicRegistration() throws {
+  func dynamicRegistration() throws {
     let registry = CredentialParserRegistry.shared
 
     // Unregistered type should return nil
@@ -74,7 +74,7 @@ struct CredentialParserRegistryTests {
   }
 
   @Test("Registry has no obvious thread-safety problems for concurrent registrations")
-  func testRegistryThreadSafety() async throws {
+  func threadSafety() async throws {
     let registry = CredentialParserRegistry.shared
 
     await withTaskGroup(of: Void.self) { group in

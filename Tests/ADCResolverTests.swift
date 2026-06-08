@@ -20,7 +20,7 @@ import Testing
 @Suite("ADC Resolver Tests")
 struct ADCResolverTests {
   @Test("load ADC no file at env is error")
-  func testLoadADCNoFileAtEnvIsError() {
+  func loadADCNoFileAtEnvIsError() {
     let env = ["GOOGLE_APPLICATION_CREDENTIALS": "file-does-not-exist.json"]
     #expect(throws: ADCResolverError.self) {
       _ = try loadADC(environment: env)
@@ -28,14 +28,14 @@ struct ADCResolverTests {
   }
 
   @Test("load ADC no well known path fallback to mds")
-  func testLoadADCNoWellKnownPathFallbackToMDS() throws {
+  func loadADCNoWellKnownPathFallbackToMDS() throws {
     let env: [String: String] = [:]
     let result = try loadADC(environment: env)
     #expect(result == .fallbackToMds)
   }
 
   @Test("load ADC success")
-  func testLoadADCSuccess() throws {
+  func loadADCSuccess() throws {
     let tempDir = FileManager.default.temporaryDirectory
     let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".json")
     let contents = Data("contents".utf8)
@@ -48,7 +48,7 @@ struct ADCResolverTests {
   }
 
   @Test("create access token credentials fallback to mds with quota project override")
-  func testCreateAccessTokenCredentialsFallbackToMdsWithQuotaProjectOverride() throws {
+  func createAccessTokenCredentialsFallbackToMDSWithQuotaProjectOverride() throws {
     let env = ["GOOGLE_CLOUD_QUOTA_PROJECT": "env-quota-project"]
     let creds = try ADC.resolve(quotaProjectID: "test-quota-project", environment: env)
 

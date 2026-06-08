@@ -20,7 +20,7 @@ import Testing
 // MARK: - Suite: ADCTest
 
 @Suite struct ADCTest {
-  @Test func adcResolvesToMDSCredentials() async throws {
+  @Test func resolvesToMDSCredentials() async throws {
     let provider = try ADC.resolve(environment: [:])
     #expect(provider is MDSCredentials)
 
@@ -28,7 +28,7 @@ import Testing
     #expect(ud == nil)
   }
 
-  @Test func adcPropagatesEnvironmentToMDS() async throws {
+  @Test func propagatesEnvironmentToMDS() async throws {
     let customHost = "custom-metadata.local"
     let environment = ["GCE_METADATA_HOST": customHost]
     let provider = try ADC.resolve(environment: environment)

@@ -52,7 +52,7 @@ private final class MockURLProtocol: URLProtocol {
     self.mockSession = URLSession(configuration: config)
   }
 
-  @Test func headers_success_with_quota_project() async throws {
+  @Test func headersSuccessWithQuotaProject() async throws {
     let targetURL = URL(
       string:
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -93,7 +93,7 @@ private final class MockURLProtocol: URLProtocol {
     )
   }
 
-  @Test func test_gce_metadata_host_env_var() async throws {
+  @Test func gceMetadataHostEnvVar() async throws {
     let targetURL = URL(
       string: "http://127.0.0.1:8080/computeMetadata/v1/instance/service-accounts/default/token"
     )!
@@ -134,7 +134,7 @@ private final class MockURLProtocol: URLProtocol {
     #expect(ud == nil, "Universe domain should be nil for MDS provider")
   }
 
-  @Test func adc_no_mds() async throws {
+  @Test func adcNoMDS() async throws {
     MockURLProtocol.requestHandler = { (request: URLRequest) in
       throw URLError(.cannotConnectToHost)
     }
@@ -157,7 +157,7 @@ private final class MockURLProtocol: URLProtocol {
     }
   }
 
-  @Test func adc_overridden_mds() async throws {
+  @Test func adcOverriddenMDS() async throws {
     MockURLProtocol.requestHandler = { (request: URLRequest) in
       throw URLError(.cannotConnectToHost)
     }
@@ -171,7 +171,7 @@ private final class MockURLProtocol: URLProtocol {
     }
   }
 
-  @Test func test_mds_retries_on_transient_failures() async throws {
+  @Test func retriesOnTransientFailures() async throws {
     let targetURL = URL(
       string:
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -214,7 +214,7 @@ private final class MockURLProtocol: URLProtocol {
     #expect(count == 3, "Expected exactly 3 execution attempts, got \(count)")
   }
 
-  @Test func test_mds_retries_for_success() async throws {
+  @Test func retriesForSuccess() async throws {
     let targetURL = URL(
       string:
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -256,7 +256,7 @@ private final class MockURLProtocol: URLProtocol {
     #expect(count == 2, "Expected exactly 2 execution attempts, got \(count)")
   }
 
-  @Test func test_mds_does_not_retry_on_non_transient_failures() async throws {
+  @Test func doesNotRetryOnNonTransientFailures() async throws {
     let targetURL = URL(
       string:
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -283,7 +283,7 @@ private final class MockURLProtocol: URLProtocol {
     #expect(count == 1, "Expected no retries on permanent HTTP 404 error, got \(count) calls")
   }
 
-  @Test func token_caching() async throws {
+  @Test func tokenCaching() async throws {
     let targetURL = URL(
       string:
         "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"

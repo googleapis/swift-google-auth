@@ -27,7 +27,7 @@ private actor Counter {
 // MARK: - Suite: TestClockTests
 
 @Suite struct TestClockTests {
-  @Test func testSleep() async throws {
+  @Test func sleep() async throws {
     let clock = TestClock()
     let start = clock.now
     let completed = Counter()
@@ -55,7 +55,7 @@ private actor Counter {
     #expect(await completed.count == 1)
   }
 
-  @Test func testSleepCancel() async throws {
+  @Test func sleepCancel() async throws {
     let clock = TestClock()
     let start = clock.now
 
@@ -71,7 +71,7 @@ private actor Counter {
     }
   }
 
-  @Test func testSleepCancelBeforeAdvance() async throws {
+  @Test func sleepCancelBeforeAdvance() async throws {
     let clock = TestClock()
     let start = clock.now
 
