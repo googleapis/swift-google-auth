@@ -558,213 +558,213 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     // Verify only ONE fetch operation was executed on the backend!
     #expect(await delayedProvider.count == 1)
   }
-}
 
-@Test func testDebugTokenCache() async {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    shortRefreshSlack: .seconds(1)
-  )
+  @Test func debugTokenCache() async {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      shortRefreshSlack: .seconds(1)
+    )
 
-  let debugDescription = String(reflecting: cache)
-  #expect(debugDescription.contains("TokenCache"))
-}
-
-@Test func backgroundLoopTriggersFetchOnStartup() async throws {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let expectedToken = Token(
-    accessToken: "token-1", expirationDate: Date().addingTimeInterval(1000))
-  await provider.configure(token: expectedToken)
-
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    shortRefreshSlack: .seconds(1)
-  )
-
-  // Wait for the first fetch to start deterministically!
-  await provider.fetcherWaiting()
-  #expect(await provider.count == 1)
-  _ = cache  // Keep it alive!
-}
-
-@Test func testTokenThrowsPermanentError() async throws {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let expectedError = URLError(.userAuthenticationRequired)
-  await provider.configure(token: nil, error: expectedError)
-
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    normalRefreshSlack: .seconds(2),
-    shortRefreshSlack: .seconds(1),
-    isRetryable: { _ in false }  // Treat all errors as permanent
-  )
-
-  // Wait for the background loop to start the fetch deterministically
-  await provider.fetcherWaiting()
-
-  // The fetch should fail immediately, setting permanentError and terminating loop.
-
-  // Calling token() should throw the permanent error
-  await #expect {
-    try await cache.token()
-  } throws: { error in
-    guard let urlError = error as? URLError else { return false }
-    return urlError.code == .userAuthenticationRequired
+    let debugDescription = String(reflecting: cache)
+    #expect(debugDescription.contains("TokenCache"))
   }
 
-  // Verify count is exactly 1 (the background loop's startup fetch)
-  #expect(await provider.count == 1)
+  @Test func backgroundLoopTriggersFetchOnStartup() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let expectedToken = Token(
+      accessToken: "token-1", expirationDate: Date().addingTimeInterval(1000))
+    await provider.configure(token: expectedToken)
 
-  // Call it again, should still throw the SAME error without calling provider
-  await #expect {
-    try await cache.token()
-  } throws: { error in
-    guard let urlError = error as? URLError else { return false }
-    return urlError.code == .userAuthenticationRequired
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      shortRefreshSlack: .seconds(1)
+    )
+
+    // Wait for the first fetch to start deterministically!
+    await provider.fetcherWaiting()
+    #expect(await provider.count == 1)
+    _ = cache  // Keep it alive!
   }
 
-  #expect(await provider.count == 1)
-}
+  @Test func tokenThrowsPermanentError() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let expectedError = URLError(.userAuthenticationRequired)
+    await provider.configure(token: nil, error: expectedError)
 
-@Test func testRefreshTaskSleepsUntilStale() async throws {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let now = Date()
-  let timeSource = MockTimeSource(currentDate: now)
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      normalRefreshSlack: .seconds(2),
+      shortRefreshSlack: .seconds(1),
+      isRetryable: { _ in false }  // Treat all errors as permanent
+    )
 
-  let token = Token(
-    accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(5.0))
-  await provider.configure(token: token)
+    // Wait for the background loop to start the fetch deterministically
+    await provider.fetcherWaiting()
 
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    timeSource: timeSource,
-    normalRefreshSlack: .seconds(2),  // Stale if expires in < 2s
-    shortRefreshSlack: .seconds(1)
-  )
+    // The fetch should fail immediately, setting permanentError and terminating loop.
 
-  // Wait for the first fetch to complete and loop to sleep
-  await clock.sleeperWaiting()
+    // Calling token() should throw the permanent error
+    await #expect {
+      try await cache.token()
+    } throws: { error in
+      guard let urlError = error as? URLError else { return false }
+      return urlError.code == .userAuthenticationRequired
+    }
 
-  // Now background loop should calculate sleep: 5.0 - 2.0 = 3.0 seconds
+    // Verify count is exactly 1 (the background loop's startup fetch)
+    #expect(await provider.count == 1)
 
-  // Re-configure provider to return a new token on next fetch
-  let nextToken = Token(
-    accessToken: "token-2", expirationDate: timeSource.now.addingTimeInterval(1000))
-  await provider.configure(token: nextToken)
+    // Call it again, should still throw the SAME error without calling provider
+    await #expect {
+      try await cache.token()
+    } throws: { error in
+      guard let urlError = error as? URLError else { return false }
+      return urlError.code == .userAuthenticationRequired
+    }
 
-  // Advance clock by 1.0 seconds (less than 3.0s sleep). Should NOT have fetched again!
-  timeSource.advance(by: 1.0)
-  clock.advance(by: .seconds(1))
-  #expect(await provider.count == 1)
-
-  // Advance clock another 3.0 seconds (total 4.0s, well past the 3.0s sleep). Should HAVE fetched again!
-  timeSource.advance(by: 3.0)
-  clock.advance(by: .seconds(3))
-
-  // Wait for the second fetch to complete and background loop to enter sleep again!
-  await clock.sleeperWaiting()
-  #expect(await provider.count == 2)
-
-  let fetchedToken = try await cache.token()
-  #expect(fetchedToken.accessToken == "token-2")
-}
-
-@Test func testRefreshLoopSleepsUntilStaleWhenValid() async throws {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let now = Date()
-  let timeSource = MockTimeSource(currentDate: now)
-
-  // Token expires in 10 seconds
-  let token = Token(
-    accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(10.0))
-  await provider.configure(token: token)
-
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    timeSource: timeSource,
-    normalRefreshSlack: .seconds(2),  // Consider stale if expires in < 2s
-    shortRefreshSlack: .seconds(0.5)
-  )
-
-  // Wait for the first fetch to complete and loop to sleep
-  await clock.sleeperWaiting()
-
-  // Advance clock by 7.9 seconds. Token is still valid and NOT stale (expires in 2.1s).
-  timeSource.advance(by: 7.9)
-  clock.advance(by: .seconds(7.9))
-
-  // The sleeper is still sleeping because 7.9s < 8.0s deadline.
-  #expect(clock.hasSleepers)
-
-  _ = cache  // Keep it alive!
-}
-
-@Test func testTokenFailureAbortsBackgroundLoop() async throws {
-  let provider = MockTokenProvider()
-  let clock = TestClock()
-  let now = Date()
-  let timeSource = MockTimeSource(currentDate: now)
-
-  // 1. Configure provider to return a token that expires in 10 seconds
-  let initialToken = Token(
-    accessToken: "initial-token", expirationDate: now.addingTimeInterval(10.0))
-  await provider.configure(token: initialToken)
-
-  let cache = TokenCache(
-    provider: provider,
-    clock: clock,
-    timeSource: timeSource,
-    normalRefreshSlack: .seconds(2),  // Stale if expires in < 2s
-    shortRefreshSlack: .seconds(1),
-    isRetryable: { _ in false }  // Treat all errors as permanent
-  )
-
-  // 2. Wait for the first fetch to complete and background task to enter sleep (sleep duration: 8s)
-  await clock.sleeperWaiting()
-  #expect(await provider.count == 1)
-
-  // 3. Re-configure provider to return a permanent error on next fetch
-  let expectedError = URLError(.userAuthenticationRequired)
-  await provider.configure(token: nil, error: expectedError)
-
-  // 4. Advance timeSource by 11 seconds (so the token is now fully expired)
-  // BUT do NOT advance clock! The background task remains asleep.
-  timeSource.advance(by: 11.0)
-
-  // 5. Call token() on-demand. Since token is expired, token() triggers a fetch.
-  // This fetch fails with the permanent error, so token() should catch it,
-  // set `permanentError` on the cache, and throw.
-  await #expect(throws: URLError.self) {
-    try await cache.token()
+    #expect(await provider.count == 1)
   }
 
-  // 6. Now advance the clock by 8s to wake up the background task
-  clock.advance(by: .seconds(8))
+  @Test func refreshTaskSleepsUntilStale() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
 
-  // 7. The background task wakes up, enters checkStateAndTriggerRefresh,
-  // hits the `if let _ = self.permanentError { return .terminate }` guard,
-  // and terminates immediately WITHOUT triggering a third fetch!
-  // So provider.count must remain exactly 2!
-  #expect(await provider.count == 2)
+    let token = Token(
+      accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(5.0))
+    await provider.configure(token: token)
 
-  // 8. Subsequent calls to token() should instantly throw the permanent error without calling provider
-  await #expect {
-    try await cache.token()
-  } throws: { error in
-    guard let urlError = error as? URLError else { return false }
-    return urlError.code == .userAuthenticationRequired
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),  // Stale if expires in < 2s
+      shortRefreshSlack: .seconds(1)
+    )
+
+    // Wait for the first fetch to complete and loop to sleep
+    await clock.sleeperWaiting()
+
+    // Now background loop should calculate sleep: 5.0 - 2.0 = 3.0 seconds
+
+    // Re-configure provider to return a new token on next fetch
+    let nextToken = Token(
+      accessToken: "token-2", expirationDate: timeSource.now.addingTimeInterval(1000))
+    await provider.configure(token: nextToken)
+
+    // Advance clock by 1.0 seconds (less than 3.0s sleep). Should NOT have fetched again!
+    timeSource.advance(by: 1.0)
+    clock.advance(by: .seconds(1))
+    #expect(await provider.count == 1)
+
+    // Advance clock another 3.0 seconds (total 4.0s, well past the 3.0s sleep). Should HAVE fetched again!
+    timeSource.advance(by: 3.0)
+    clock.advance(by: .seconds(3))
+
+    // Wait for the second fetch to complete and background loop to enter sleep again!
+    await clock.sleeperWaiting()
+    #expect(await provider.count == 2)
+
+    let fetchedToken = try await cache.token()
+    #expect(fetchedToken.accessToken == "token-2")
   }
 
-  #expect(await provider.count == 2)
+  @Test func refreshLoopSleepsUntilStaleWhenValid() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
+
+    // Token expires in 10 seconds
+    let token = Token(
+      accessToken: "token-1", expirationDate: timeSource.now.addingTimeInterval(10.0))
+    await provider.configure(token: token)
+
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),  // Consider stale if expires in < 2s
+      shortRefreshSlack: .seconds(0.5)
+    )
+
+    // Wait for the first fetch to complete and loop to sleep
+    await clock.sleeperWaiting()
+
+    // Advance clock by 7.9 seconds. Token is still valid and NOT stale (expires in 2.1s).
+    timeSource.advance(by: 7.9)
+    clock.advance(by: .seconds(7.9))
+
+    // The sleeper is still sleeping because 7.9s < 8.0s deadline.
+    #expect(clock.hasSleepers)
+
+    _ = cache  // Keep it alive!
+  }
+
+  @Test func tokenFailureAbortsBackgroundLoop() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
+
+    // 1. Configure provider to return a token that expires in 10 seconds
+    let initialToken = Token(
+      accessToken: "initial-token", expirationDate: now.addingTimeInterval(10.0))
+    await provider.configure(token: initialToken)
+
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),  // Stale if expires in < 2s
+      shortRefreshSlack: .seconds(1),
+      isRetryable: { _ in false }  // Treat all errors as permanent
+    )
+
+    // 2. Wait for the first fetch to complete and background task to enter sleep (sleep duration: 8s)
+    await clock.sleeperWaiting()
+    #expect(await provider.count == 1)
+
+    // 3. Re-configure provider to return a permanent error on next fetch
+    let expectedError = URLError(.userAuthenticationRequired)
+    await provider.configure(token: nil, error: expectedError)
+
+    // 4. Advance timeSource by 11 seconds (so the token is now fully expired)
+    // BUT do NOT advance clock! The background task remains asleep.
+    timeSource.advance(by: 11.0)
+
+    // 5. Call token() on-demand. Since token is expired, token() triggers a fetch.
+    // This fetch fails with the permanent error, so token() should catch it,
+    // set `permanentError` on the cache, and throw.
+    await #expect(throws: URLError.self) {
+      try await cache.token()
+    }
+
+    // 6. Now advance the clock by 8s to wake up the background task
+    clock.advance(by: .seconds(8))
+
+    // 7. The background task wakes up, enters checkStateAndTriggerRefresh,
+    // hits the `if let _ = self.permanentError { return .terminate }` guard,
+    // and terminates immediately WITHOUT triggering a third fetch!
+    // So provider.count must remain exactly 2!
+    #expect(await provider.count == 2)
+
+    // 8. Subsequent calls to token() should instantly throw the permanent error without calling provider
+    await #expect {
+      try await cache.token()
+    } throws: { error in
+      guard let urlError = error as? URLError else { return false }
+      return urlError.code == .userAuthenticationRequired
+    }
+
+    #expect(await provider.count == 2)
+  }
 }
