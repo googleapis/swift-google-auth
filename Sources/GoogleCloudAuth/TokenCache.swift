@@ -140,12 +140,12 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
   ///
   /// If missing/expired, awaits the active background refresh task (sharing it concurrently to prevent thundering herds).
   func token() async throws -> Token {
-    if let error = self.permanentError {
-      throw error
-    }
-
     if let cached = self.cachedToken, !self.isExpired(cached) {
       return cached
+    }
+
+    if let error = self.permanentError {
+      throw error
     }
 
     let task = self.triggerRefresh()
@@ -233,7 +233,7 @@ actor TokenCache<C: Clock> where C.Instant.Duration == Duration {
       }
       self.clearActiveTask()
 
-      // On permanent errors, break the loop to prevent endless polling
+      // On permanent errors, break the loop to prevent endless polling.
       if !self.isRetryable(error) {
         self.permanentError = error
         return .terminate

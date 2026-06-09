@@ -247,6 +247,145 @@ private actor DelayedFailedTokenProvider: TokenProvider {
     #expect(await provider.count == 1)  // Count remains 1
   }
 
+  @Test func refreshTransientFailurePreservesValidToken() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
+
+    // Initial token expires in 10 seconds
+    let initialToken = Token(accessToken: "valid", expirationDate: now.addingTimeInterval(10))
+    await provider.configure(token: initialToken, error: nil)
+
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),  // refresh when < 2s left
+      shortRefreshSlack: .seconds(1),
+      isRetryable: { _ in true }  // Transient errors
+    )
+
+    // Wait for the background loop to fetch the initial token
+    await clock.sleeperWaiting()
+
+    // Configure a transient error
+    await provider.configure(token: nil, error: URLError(.timedOut))
+
+    // Advance to 1 second before expiration (stale, triggers refresh)
+    timeSource.advance(by: 9)
+    clock.advance(by: .seconds(9))
+
+    // Wait for the refresh loop to attempt refresh, hit the transient error, and sleep again deterministically
+    await clock.sleeperWaiting()
+
+    // The token is still valid for 1 more second. Should return cached.
+    let stillValid = try await cache.token()
+    #expect(stillValid.accessToken == "valid")
+    #expect(await provider.count == 2)
+  }
+
+  @Test func refreshPermanentFailurePreservesValidToken() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
+
+    // Initial token expires in 10 seconds
+    let initialToken = Token(accessToken: "valid", expirationDate: now.addingTimeInterval(10))
+    await provider.configure(token: initialToken, error: nil)
+
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),  // refresh when < 2s left
+      shortRefreshSlack: .seconds(1),
+      isRetryable: { _ in false }  // Treat all errors as permanent
+    )
+
+    // Wait for the background loop to fetch the initial token and sleep
+    await clock.sleeperWaiting()
+
+    // Configure a permanent error for the refresh
+    await provider.configure(token: nil, error: URLError(.badServerResponse))
+
+    // Advance to 1 second before expiration (stale, triggers refresh)
+    timeSource.advance(by: 9)
+    clock.advance(by: .seconds(9))
+
+    // Wait for the refresh loop to attempt refresh and fail permanently.
+    // It terminates instead of sleeping, so we poll provider count.
+    while await provider.count < 2 {
+      await Task.yield()
+    }
+
+    // The token is still valid for 1 more second! It should NOT throw yet.
+    let stillValid = try await cache.token()
+    #expect(stillValid.accessToken == "valid")
+
+    // Advance past expiration
+    timeSource.advance(by: 2)
+
+    // Now it should throw the permanent error
+    await #expect(throws: URLError.self) {
+      try await cache.token()
+    }
+  }
+
+  @Test func noRequestsAfterPermanentError() async throws {
+    let provider = MockTokenProvider()
+    let clock = TestClock()
+    let now = Date()
+    let timeSource = MockTimeSource(currentDate: now)
+
+    let initialToken = Token(accessToken: "valid", expirationDate: now.addingTimeInterval(10))
+    await provider.configure(token: initialToken, error: nil)
+
+    let cache = TokenCache(
+      provider: provider,
+      clock: clock,
+      timeSource: timeSource,
+      normalRefreshSlack: .seconds(2),
+      shortRefreshSlack: .seconds(1),
+      isRetryable: { _ in false }
+    )
+
+    await clock.sleeperWaiting()
+
+    await provider.configure(token: nil, error: URLError(.badServerResponse))
+
+    // Advance to 1 second before expiration (stale, triggers refresh).
+    // Loop wakes up, fails permanently, and terminates.
+    timeSource.advance(by: 9)
+    clock.advance(by: .seconds(9))
+
+    while await provider.count < 2 {
+      await Task.yield()
+    }
+
+    // Call token() before expiration. Should return cached token and NOT trigger another refresh.
+    let stillValid = try await cache.token()
+    #expect(stillValid.accessToken == "valid")
+    #expect(await provider.count == 2)
+
+    // Call token() again before expiration. Should still NOT trigger another refresh.
+    _ = try await cache.token()
+    #expect(await provider.count == 2)
+
+    // Advance past expiration.
+    timeSource.advance(by: 2)
+
+    // Caller 1 hits permanent error
+    await #expect(throws: URLError.self) { try await cache.token() }
+
+    // Caller 2 hits permanent error
+    await #expect(throws: URLError.self) { try await cache.token() }
+
+    // Verify no further network requests were made even after expiration!
+    #expect(await provider.count == 2)
+  }
+
   @Test func cacheRefreshesWhenTokenIsStale() async throws {
     let provider = MockTokenProvider()
     let clock = TestClock()
