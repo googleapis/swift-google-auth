@@ -134,6 +134,43 @@ struct AuthHTTPClient: Sendable {
     }
   }
 
+  /// Asynchronously dispatches a POST request sending raw data and decodes the JSON response.
+  ///
+  /// - Parameters:
+  ///   - url: The target URL of the request.
+  ///   - bodyData: The raw data to send as the HTTP body.
+  ///   - contentType: The Content-Type header value.
+  ///   - headers: HTTP request headers.
+  /// - Returns: The parsed JSON response structure.
+  func postData<Response: Decodable>(
+    url: URL,
+    bodyData: Data,
+    contentType: String,
+    headers: [String: String] = [:]
+  ) async throws -> Response {
+    return try await self.mapError {
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+      request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+
+      for (key, value) in headers {
+        request.setValue(value, forHTTPHeaderField: key)
+      }
+
+      request.httpBody = bodyData
+
+      let (data, response) = try await self.performRequest(request)
+      try self.ensureSuccess(response, data: data)
+
+      do {
+        return try self.makeDecoder().decode(Response.self, from: data)
+      } catch let error as DecodingError {
+        throw AuthHTTPError.decodingError(error: error, data: data)
+      }
+    }
+  }
+
   // MARK: - Private Helpers
 
   /// Centralizes error mapping logic to wrap any transport or unknown failures in AuthHTTPError.

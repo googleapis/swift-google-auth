@@ -398,34 +398,6 @@ import Testing
   }
 }
 
-private extension URLRequest {
-  // On macOS, the request body is dispatched via a `httpBodyStream`. This is overkill, but we need
-  // to make the code portable ourselves.
-  var bodyData: Data? {
-    if let httpBody = httpBody {
-      return httpBody
-    }
-    guard let stream = httpBodyStream else {
-      return nil
-    }
-    stream.open()
-    defer { stream.close() }
-    var data = Data()
-    let bufferSize = 1024
-    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-    defer { buffer.deallocate() }
-    while stream.hasBytesAvailable {
-      let read = stream.read(buffer, maxLength: bufferSize)
-      if read > 0 {
-        data.append(buffer, count: read)
-      } else {
-        break
-      }
-    }
-    return data
-  }
-}
-
 private final class MockURLProtocol: URLProtocol {
   nonisolated(unsafe) static var requestHandler: ((URLRequest) throws -> (URLResponse, Data))?
 

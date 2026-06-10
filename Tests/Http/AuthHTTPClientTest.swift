@@ -290,4 +290,42 @@ private final class MockURLProtocol: URLProtocol {
       let _: MockTokenResponse = try await client.get(url: targetURL)
     }
   }
+
+  @Test func clientPerformsPostDataAndDecodesSnakeCase() async throws {
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+    let mockPayload = MockTokenResponse(accessToken: "fake-sts-token-xyz", expiresIn: 3600)
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let encodedData = try encoder.encode(mockPayload)
+
+    let postBody = Data("grant_type=urn:ietf:params:oauth:grant-type:token-exchange".utf8)
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.url == targetURL)
+      #expect(request.httpMethod == "POST")
+      #expect(
+        request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded")
+      #expect(request.value(forHTTPHeaderField: "X-Custom-Header") == "Val")
+
+      #expect(request.bodyData == postBody)
+
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil as String?,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, encodedData)
+    }
+
+    let client = AuthHTTPClient(session: self.mockSession)
+    let response: MockTokenResponse = try await client.postData(
+      url: targetURL,
+      bodyData: postBody,
+      contentType: "application/x-www-form-urlencoded",
+      headers: ["X-Custom-Header": "Val"]
+    )
+
+    #expect(response == mockPayload)
+  }
 }
