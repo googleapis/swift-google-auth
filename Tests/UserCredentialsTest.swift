@@ -51,7 +51,7 @@ import Testing
 
     let provider = try UserCredentials(
       user: mockData,
-      universeDomain: "mock-domain",
+      universeDomain: defaultUniverseDomain,
       httpClient: AuthHTTPClient(session: self.mockSession),
       retryConfiguration: .defaultConfiguration
     )
@@ -60,7 +60,7 @@ import Testing
     _ = try? await provider.headers()
 
     let ud = await provider.universeDomain()
-    #expect(ud == "mock-domain")
+    #expect(ud == defaultUniverseDomain)
   }
 
   @Test func credentialProviderWithTokenUri() async throws {
@@ -371,6 +371,30 @@ import Testing
     // Verify that only exactly ONE HTTP call was executed by the httpClient!
     let finalCount = requestCount.getCount()
     #expect(finalCount == 1)
+  }
+
+  @Test func initializerRejectsNonDefaultUniverse() async throws {
+    let mockData = UserAccountData(
+      type: "authorized_user",
+      clientId: "mock-id",
+      clientSecret: "mock-secret",
+      refreshToken: "mock-token"
+    )
+
+    #expect {
+      try UserCredentials(
+        user: mockData,
+        universeDomain: "custom.com",
+        httpClient: AuthHTTPClient(session: self.mockSession),
+        retryConfiguration: .defaultConfiguration
+      )
+    } throws: { error in
+      guard let credError = error as? CredentialsError else { return false }
+      if case let .notSupported(message) = credError {
+        return message.contains("custom universes: custom.com")
+      }
+      return false
+    }
   }
 }
 

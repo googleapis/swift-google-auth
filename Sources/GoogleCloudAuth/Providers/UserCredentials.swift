@@ -82,6 +82,10 @@ struct UserCredentials: CredentialsSource, Sendable {
     httpClient: AuthHTTPClient,
     retryConfiguration: RetryConfiguration
   ) throws {
+    if let universeDomain = universeDomain, universeDomain != defaultUniverseDomain {
+      throw CredentialsError.notSupported(
+        "User accounts are not supported in custom universes: \(universeDomain)")
+    }
     self.universeDomain = universeDomain
 
     // Resolve Token URI

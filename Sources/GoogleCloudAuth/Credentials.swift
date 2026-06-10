@@ -18,6 +18,9 @@ import Foundation
   import FoundationNetworking
 #endif
 
+/// The default Google Cloud universe domain.
+package let defaultUniverseDomain = "googleapis.com"
+
 /// Represents the HTTP request header fields required to authenticate an API query.
 /// Formatted as an array of key-value tuples to natively support duplicate header names.
 public typealias AuthHeaders = [(String, String)]
