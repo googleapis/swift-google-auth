@@ -69,6 +69,9 @@ private final class MockURLProtocol: URLProtocol {
     let encodedData = try encoder.encode(mockPayload)
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let response = HTTPURLResponse(
         url: targetURL,
         statusCode: 200,
@@ -93,6 +96,47 @@ private final class MockURLProtocol: URLProtocol {
     )
   }
 
+  @Test func headersSuccessWithScopes() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token?scopes=scope1,scope2"
+    )!
+
+    struct MockResponse: Encodable {
+      let accessToken: String
+      let expiresIn: Int
+      let tokenType: String
+    }
+    let mockPayload = MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer")
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let encodedData = try encoder.encode(mockPayload)
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
+      #expect(request.url?.query == "scopes=scope1,scope2")
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil as String?,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, encodedData)
+    }
+
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(
+      scopes: ["scope1", "scope2"], client: client, environment: [:])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-token" },
+      "Missing authorization header in \(headers)"
+    )
+  }
+
   @Test func gceMetadataHostEnvVar() async throws {
     let targetURL = URL(
       string: "http://127.0.0.1:8080/computeMetadata/v1/instance/service-accounts/default/token"
@@ -110,6 +154,9 @@ private final class MockURLProtocol: URLProtocol {
     let encodedData = try encoder.encode(mockPayload)
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let response = HTTPURLResponse(
         url: targetURL, statusCode: 200, httpVersion: nil,
         headerFields: ["Content-Type": "application/json"])!
@@ -136,6 +183,9 @@ private final class MockURLProtocol: URLProtocol {
 
   @Test func adcNoMDS() async throws {
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       throw URLError(.cannotConnectToHost)
     }
     let client = AuthHTTPClient(session: self.mockSession)
@@ -159,6 +209,9 @@ private final class MockURLProtocol: URLProtocol {
 
   @Test func adcOverriddenMDS() async throws {
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       throw URLError(.cannotConnectToHost)
     }
     let client = AuthHTTPClient(session: self.mockSession)
@@ -185,6 +238,9 @@ private final class MockURLProtocol: URLProtocol {
     let attempts = CallCounter()
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let count = attempts.increment()
       if count < 3 {
         return (
@@ -228,6 +284,9 @@ private final class MockURLProtocol: URLProtocol {
     let attempts = CallCounter()
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let count = attempts.increment()
       if count == 1 {
         return (
@@ -264,6 +323,9 @@ private final class MockURLProtocol: URLProtocol {
     let attempts = CallCounter()
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let _ = attempts.increment()
       return (
         HTTPURLResponse(url: targetURL, statusCode: 404, httpVersion: nil, headerFields: nil)!,
@@ -297,6 +359,9 @@ private final class MockURLProtocol: URLProtocol {
     let networkCalls = CallCounter()
 
     MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
       let _ = networkCalls.increment()
       return (
         HTTPURLResponse(
