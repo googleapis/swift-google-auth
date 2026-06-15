@@ -24,6 +24,9 @@ let package = Package(
   products: [
     .library(name: "GoogleCloudAuth", targets: ["GoogleCloudAuth"])
   ],
+  traits: [
+    "IntegrationTests"
+  ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-system.git", from: "1.0.0"),
     .package(url: "https://github.com/vapor/jwt-kit.git", from: "5.0.0"),
@@ -40,6 +43,13 @@ let package = Package(
     .testTarget(
       name: "GoogleCloudAuthTests",
       dependencies: ["GoogleCloudAuth", .product(name: "JWTKit", package: "jwt-kit")],
-      path: "Tests"),
+      path: "Tests",
+      exclude: ["IntegrationTests"]
+    ),
+    .testTarget(
+      name: "GoogleCloudAuthIntegrationTests",
+      dependencies: ["GoogleCloudAuth"],
+      path: "Tests/IntegrationTests"
+    ),
   ]
 )

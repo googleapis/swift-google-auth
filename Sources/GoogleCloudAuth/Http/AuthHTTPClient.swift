@@ -20,6 +20,7 @@ import Foundation
 
 /// A lightweight, portable, and secure HTTP request client dedicated to authentication requests.
 struct AuthHTTPClient: Sendable {
+  private static let sharedSession = URLSession(configuration: .ephemeral)
   private let sessionProvider: @Sendable () -> URLSession
 
   /// Initializes the client with a dynamic session provider closure.
@@ -36,11 +37,7 @@ struct AuthHTTPClient: Sendable {
     if let session = session {
       self.sessionProvider = { session }
     } else {
-      self.sessionProvider = {
-        // Ephemeral prevents OS from caching sensitive tokens on disk
-        let config = URLSessionConfiguration.ephemeral
-        return URLSession(configuration: config)
-      }
+      self.sessionProvider = { Self.sharedSession }
     }
   }
 
