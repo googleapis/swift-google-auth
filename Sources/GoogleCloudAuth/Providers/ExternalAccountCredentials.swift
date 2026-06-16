@@ -17,8 +17,84 @@ import Foundation
   import FoundationNetworking
 #endif
 
+/// Coordinates the asynchronous resolution of the raw subject token and its subsequent STS token exchange.
+struct ExternalAccountTokenProvider: TokenProvider, Sendable {
+  private let subjectTokenProvider: any SubjectTokenProvider
+  private let stsHandler: STSHandler
+  private let tokenURL: URL
+  private let subjectTokenType: String
+  private let audience: String
+  private let scopes: [String]
+  private let workforcePoolUserProject: String?
+  private let clientID: String?
+  private let clientSecret: String?
+
+  init(
+    subjectTokenProvider: any SubjectTokenProvider,
+    tokenURL: URL,
+    subjectTokenType: String,
+    audience: String,
+    scopes: [String],
+    workforcePoolUserProject: String?,
+    clientID: String?,
+    clientSecret: String?,
+    httpClient: AuthHTTPClient = AuthHTTPClient()
+  ) {
+    self.subjectTokenProvider = subjectTokenProvider
+    self.tokenURL = tokenURL
+    self.subjectTokenType = subjectTokenType
+    self.audience = audience
+    self.scopes = scopes
+    self.workforcePoolUserProject = workforcePoolUserProject
+    self.clientID = clientID
+    self.clientSecret = clientSecret
+    self.stsHandler = STSHandler(httpClient: httpClient)
+  }
+
+  func fetchToken() async throws -> Token {
+    let subjectToken = try await subjectTokenProvider.subjectToken()
+
+    let request = ExchangeTokenRequest(
+      subjectToken: subjectToken,
+      subjectTokenType: subjectTokenType,
+      audience: audience,
+      scopes: scopes,
+      workforcePoolUserProject: workforcePoolUserProject,
+      clientAuthentication: clientID.map { ClientAuthentication(id: $0, secret: clientSecret) }
+    )
+
+    let response = try await stsHandler.exchangeToken(
+      request: request,
+      url: tokenURL,
+      encoding: .urlEncoded
+    )
+
+    let expirationDate = Date().addingTimeInterval(Double(response.expiresIn))
+    return Token(
+      accessToken: response.accessToken,
+      tokenType: response.tokenType,
+      expirationDate: expirationDate
+    )
+  }
+
+  static func isRetryable(_ error: Error) -> Bool {
+    guard let authError = error as? AuthHTTPError else { return false }
+    switch authError {
+    case .transportError:
+      return true
+    case .unsuccessfulResponse(let response, _):
+      let status = response.statusCode
+      return status >= 500 || status == 429 || status == 408
+    default:
+      return false
+    }
+  }
+}
+
 /// Credentials backing Workforce Identity Federation (OIDC / Apple WIF) external accounts.
 struct ExternalAccountCredentials: CredentialsSource, Sendable {
+  private let cache: TokenCache<ContinuousClock>
+
   let subjectTokenProvider: any SubjectTokenProvider
   let audience: String
   let subjectTokenType: String
@@ -40,7 +116,8 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
     targetPrincipal: String? = nil,
     workforcePoolUserProject: String? = nil,
     scopes: [String] = [],
-    universeDomain: String? = nil
+    universeDomain: String? = nil,
+    httpClient: AuthHTTPClient = AuthHTTPClient()
   ) throws {
     // Validate required configuration fields are not empty
     guard !audience.isEmpty else {
@@ -48,6 +125,11 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
     }
     guard !subjectTokenType.isEmpty else {
       throw CredentialsError.parseError("subjectTokenType parameter must not be empty")
+    }
+
+    if let targetPrincipal = targetPrincipal, !targetPrincipal.isEmpty {
+      throw CredentialsError.notSupported(
+        "Service account impersonation (targetPrincipal) is not supported yet")
     }
 
     // Billing constraints validation: workforce pool user project should only be set for global workforce pools.
@@ -68,11 +150,33 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
     self.workforcePoolUserProject = workforcePoolUserProject
     self.scopes = scopes
     self.universeDomain = universeDomain
+
+    let provider = ExternalAccountTokenProvider(
+      subjectTokenProvider: subjectTokenProvider,
+      tokenURL: tokenURL,
+      subjectTokenType: subjectTokenType,
+      audience: audience,
+      scopes: scopes,
+      workforcePoolUserProject: workforcePoolUserProject,
+      clientID: clientID,
+      clientSecret: clientSecret,
+      httpClient: httpClient
+    )
+
+    self.cache = TokenCache(
+      provider: provider,
+      clock: ContinuousClock(),
+      isRetryable: ExternalAccountTokenProvider.isRetryable
+    )
   }
 
   func headers() async throws -> AuthHeaders {
-    // TODO(#267): Stub implementation will be replaced with STS exchange in follow-up PR.
-    return []
+    let token = try await cache.token()
+    var headers = [("Authorization", "Bearer \(token.accessToken)")]
+    if let project = workforcePoolUserProject {
+      headers.append(("X-Goog-User-Project", project))
+    }
+    return headers
   }
 
   func universeDomain() async -> String? {

@@ -13,9 +13,42 @@
 // limitations under the License.
 
 import Foundation
+#if canImport(FoundationNetworking)
+  import FoundationNetworking
+#endif
 import Testing
 
 @testable import GoogleCloudAuth
+
+private final class MockURLProtocol: URLProtocol {
+  nonisolated(unsafe) static var requestHandler:
+    (@Sendable (URLRequest) throws -> (URLResponse, Data))?
+
+  override class func canInit(with request: URLRequest) -> Bool {
+    return true
+  }
+
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+    return request
+  }
+
+  override func startLoading() {
+    guard let handler = MockURLProtocol.requestHandler else {
+      fatalError("Handler is not set.")
+    }
+
+    do {
+      let (response, data) = try handler(request)
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: data)
+      client?.urlProtocolDidFinishLoading(self)
+    } catch {
+      client?.urlProtocol(self, didFailWithError: error)
+    }
+  }
+
+  override func stopLoading() {}
+}
 
 private struct MockSubjectTokenProvider: SubjectTokenProvider {
   let token: String
@@ -25,8 +58,27 @@ private struct MockSubjectTokenProvider: SubjectTokenProvider {
   }
 }
 
-@Suite("External Account Credentials Configuration Tests")
+private actor MockFailingSubjectTokenProvider: SubjectTokenProvider {
+  struct ProviderError: Error {}
+
+  var callCount = 0
+
+  func subjectToken() async throws -> String {
+    callCount = callCount + 1
+    throw ProviderError()
+  }
+}
+
+@Suite(.serialized)
 struct ExternalAccountTests {
+  private let mockSession: URLSession
+
+  init() {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [MockURLProtocol.self]
+    self.mockSession = URLSession(configuration: config)
+  }
+
   @Test("Configures programmatic credentials with custom providers successfully")
   func createProgrammaticCredentials() throws {
     let provider = MockSubjectTokenProvider(token: "mock-provider-token")
@@ -40,7 +92,7 @@ struct ExternalAccountTests {
       tokenURL: targetURL,
       clientID: "client-id",
       clientSecret: "client-secret",
-      targetPrincipal: "target-sa",
+      targetPrincipal: nil,
       workforcePoolUserProject: nil,
       scopes: ["scope1", "scope2"],
       universeDomain: "custom-universe.com"
@@ -53,7 +105,7 @@ struct ExternalAccountTests {
     #expect(creds.tokenURL == targetURL)
     #expect(creds.clientID == "client-id")
     #expect(creds.clientSecret == "client-secret")
-    #expect(creds.targetPrincipal == "target-sa")
+    #expect(creds.targetPrincipal == nil)
     #expect(creds.workforcePoolUserProject == nil)
     #expect(creds.scopes == ["scope1", "scope2"])
     #expect(creds.universeDomain == "custom-universe.com")
@@ -117,6 +169,22 @@ struct ExternalAccountTests {
     }
   }
 
+  @Test("Throws notSupported error when targetPrincipal is provided")
+  func createProgrammaticCredentialsFailsWhenImpersonationIsProvided() throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    #expect(throws: CredentialsError.self) {
+      _ = try ExternalAccountCredentials(
+        subjectTokenProvider: provider,
+        audience: "aud",
+        subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+        tokenURL: targetURL,
+        targetPrincipal: "target-sa@project.iam.gserviceaccount.com"
+      )
+    }
+  }
+
   @Test("Enforces audience validation throwing error if workforce project is set on workload pools")
   func programmaticCredentialsWorkforcePoolUserProjectFailsWithoutWorkforcePoolAudience() throws {
     let provider = MockSubjectTokenProvider(token: "mock-provider-token")
@@ -137,10 +205,190 @@ struct ExternalAccountTests {
     }
   }
 
-  @Test(
-    "Validates authorization and billing quota headers match outgoing requirements",
-    .disabled("PR3"))
-  func programmaticCredentialsReturnsCorrectHeaders() async throws {}
+  @Test("Validates authorization and billing quota headers match outgoing requirements")
+  func programmaticCredentialsReturnsCorrectHeaders() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.fake-sts-access-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url == targetURL)
+      #expect(request.httpMethod == "POST")
+      #expect(
+        request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded")
+
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, responseData)
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      workforcePoolUserProject: "quota-project",
+      httpClient: httpClient
+    )
+
+    let headers = try await creds.headers()
+    #expect(
+      headers.contains {
+        $0.0 == "Authorization" && $0.1 == "Bearer ya29.fake-sts-access-token"
+      })
+    #expect(headers.contains { $0.0 == "X-Goog-User-Project" && $0.1 == "quota-project" })
+  }
+
+  @Test("Programmatic credentials retry correctly on transient errors")
+  func programmaticCredentialsRetriesOnTransientFailures() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.success-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    nonisolated(unsafe) var attempt = 0
+
+    MockURLProtocol.requestHandler = { request in
+      attempt += 1
+      if attempt == 1 {
+        // Fail with transient 429 error first
+        let response = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 429,
+          httpVersion: nil,
+          headerFields: [:]
+        )!
+        return (response, Data())
+      } else {
+        // Succeed on subsequent attempt
+        let response = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, responseData)
+      }
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      httpClient: httpClient
+    )
+
+    // The first call should throw the transient error since on-demand fetching doesn't block on background retries
+    await #expect(throws: Error.self) {
+      _ = try await creds.headers()
+    }
+    #expect(attempt == 1)
+
+    // However, the second call should succeed since it triggers a new fetch attempt
+    let headers = try await creds.headers()
+    #expect(headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer ya29.success-token" })
+    #expect(attempt == 2)
+  }
+
+  @Test("Programmatic credentials do not retry on non-transient failures")
+  func programmaticCredentialsDoesNotRetryOnNonTransientFailures() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    nonisolated(unsafe) var attempt = 0
+
+    MockURLProtocol.requestHandler = { request in
+      attempt += 1
+      // Permanent 403 error
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 403,
+        httpVersion: nil,
+        headerFields: [:]
+      )!
+      return (response, Data())
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      httpClient: httpClient
+    )
+
+    // First call throws the 403 error (permanent)
+    await #expect(throws: Error.self) {
+      _ = try await creds.headers()
+    }
+    #expect(attempt == 1)
+
+    // Second call should fail immediately WITHOUT calling the backend again (permanent error cached)
+    await #expect(throws: Error.self) {
+      _ = try await creds.headers()
+    }
+    #expect(attempt == 1)
+  }
+
+  @Test("Programmatic credentials do not retry on custom provider errors")
+  func programmaticCredentialsDoesNotRetryOnProviderErrors() async throws {
+    let provider = MockFailingSubjectTokenProvider()
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      httpClient: httpClient
+    )
+
+    // First attempt should throw the provider error
+    await #expect(throws: Error.self) {
+      _ = try await creds.headers()
+    }
+
+    let count1 = await provider.callCount
+    #expect(count1 == 1)
+
+    // Second attempt should fail immediately without calling provider again (permanent error cached in TokenCache)
+    await #expect(throws: Error.self) {
+      _ = try await creds.headers()
+    }
+
+    let count2 = await provider.callCount
+    #expect(count2 == 1)
+  }
 
   @Test("Successfully signs tokens and performs service account impersonation", .disabled("PR3"))
   func externalAccountWithImpersonationSuccess() async throws {}
@@ -161,12 +409,6 @@ struct ExternalAccountTests {
     "Immediately aborts and throws permanent errors on 403 Forbidden IAM exceptions",
     .disabled("PR3"))
   func impersonationFlowIAMCallFails() async throws {}
-
-  @Test("Programmatic credentials retry correctly on transient errors", .disabled("PR3"))
-  func programmaticCredentialsRetriesOnTransientFailures() async throws {}
-
-  @Test("Programmatic credentials do not retry on non-transient failures", .disabled("PR3"))
-  func programmaticCredentialsDoesNotRetryOnNonTransientFailures() async throws {}
 
   @Test(
     "Programmatic credentials recover successfully on transient retry conditions", .disabled("PR3"))
