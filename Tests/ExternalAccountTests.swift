@@ -205,6 +205,53 @@ struct ExternalAccountTests {
     }
   }
 
+  @Test("Validates workforce pool audience formats correctly")
+  func workforcePoolAudienceValidation() throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    // 1. Valid audience without //iam.googleapis.com/ prefix
+    _ = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "locations/global/workforcePools/pool/providers/provider",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      workforcePoolUserProject: "billing-project"
+    )
+
+    // 2. Valid audience with prefix
+    _ = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "//iam.googleapis.com/locations/global/workforcePools/pool/providers/provider",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      workforcePoolUserProject: "billing-project"
+    )
+
+    // 3. Invalid audience: missing provider segment
+    #expect(throws: CredentialsError.self) {
+      _ = try ExternalAccountCredentials(
+        subjectTokenProvider: provider,
+        audience: "//iam.googleapis.com/locations/global/workforcePools/pool",
+        subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+        tokenURL: targetURL,
+        workforcePoolUserProject: "billing-project"
+      )
+    }
+
+    // 4. Invalid audience: extra trailing segments
+    #expect(throws: CredentialsError.self) {
+      _ = try ExternalAccountCredentials(
+        subjectTokenProvider: provider,
+        audience:
+          "//iam.googleapis.com/locations/global/workforcePools/pool/providers/provider/extra",
+        subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+        tokenURL: targetURL,
+        workforcePoolUserProject: "billing-project"
+      )
+    }
+  }
+
   @Test("Validates authorization and billing quota headers match outgoing requirements")
   func programmaticCredentialsReturnsCorrectHeaders() async throws {
     let provider = MockSubjectTokenProvider(token: "mock-provider-token")
@@ -272,10 +319,10 @@ struct ExternalAccountTests {
     encoder.keyEncodingStrategy = .convertToSnakeCase
     let responseData = try encoder.encode(expectedResponse)
 
-    nonisolated(unsafe) var attempt = 0
+    let attempts = CallCounter()
 
     MockURLProtocol.requestHandler = { request in
-      attempt += 1
+      let attempt = attempts.increment()
       if attempt == 1 {
         // Fail with transient 429 error first
         let response = HTTPURLResponse(
@@ -297,25 +344,27 @@ struct ExternalAccountTests {
       }
     }
 
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 2,
+      initialDelay: .milliseconds(1),
+      multiplier: 1.0,
+      maxDelay: .milliseconds(1)
+    )
+
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
       subjectTokenProvider: provider,
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
+      retryConfiguration: retryConfig,
       httpClient: httpClient
     )
 
-    // The first call should throw the transient error since on-demand fetching doesn't block on background retries
-    await #expect(throws: Error.self) {
-      _ = try await creds.headers()
-    }
-    #expect(attempt == 1)
-
-    // However, the second call should succeed since it triggers a new fetch attempt
+    // The call should succeed because the internal retry engine resolves it
     let headers = try await creds.headers()
     #expect(headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer ya29.success-token" })
-    #expect(attempt == 2)
+    #expect(attempts.getCount() == 2)
   }
 
   @Test("Programmatic credentials do not retry on non-transient failures")
@@ -323,10 +372,10 @@ struct ExternalAccountTests {
     let provider = MockSubjectTokenProvider(token: "mock-provider-token")
     let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
-    nonisolated(unsafe) var attempt = 0
+    let attempts = CallCounter()
 
     MockURLProtocol.requestHandler = { request in
-      attempt += 1
+      attempts.increment()
       // Permanent 403 error
       let response = HTTPURLResponse(
         url: targetURL,
@@ -350,13 +399,13 @@ struct ExternalAccountTests {
     await #expect(throws: Error.self) {
       _ = try await creds.headers()
     }
-    #expect(attempt == 1)
+    #expect(attempts.getCount() == 1)
 
     // Second call should fail immediately WITHOUT calling the backend again (permanent error cached)
     await #expect(throws: Error.self) {
       _ = try await creds.headers()
     }
-    #expect(attempt == 1)
+    #expect(attempts.getCount() == 1)
   }
 
   @Test("Programmatic credentials do not retry on custom provider errors")
@@ -393,10 +442,51 @@ struct ExternalAccountTests {
   @Test("Successfully signs tokens and performs service account impersonation", .disabled("PR3"))
   func externalAccountWithImpersonationSuccess() async throws {}
 
-  @Test(
-    "Successfully returns the direct STS access token when no impersonation is active",
-    .disabled("PR3"))
-  func externalAccountWithoutImpersonationSuccess() async throws {}
+  @Test("Successfully returns the direct STS access token when no impersonation is active")
+  func externalAccountWithoutImpersonationSuccess() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.sts-direct-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url == targetURL)
+      #expect(request.httpMethod == "POST")
+
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, responseData)
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      httpClient: httpClient
+    )
+
+    let headers = try await creds.headers()
+    #expect(
+      headers.contains {
+        $0.0 == "Authorization" && $0.1 == "Bearer ya29.sts-direct-token"
+      })
+  }
 
   @Test(
     "Constructs valid AccessTokenCredentials from programmatic configurations", .disabled("PR3"))
@@ -410,16 +500,198 @@ struct ExternalAccountTests {
     .disabled("PR3"))
   func impersonationFlowIAMCallFails() async throws {}
 
-  @Test(
-    "Programmatic credentials recover successfully on transient retry conditions", .disabled("PR3"))
-  func programmaticCredentialsRetriesForSuccess() async throws {}
+  @Test("Programmatic credentials recover successfully on transient retry conditions")
+  func programmaticCredentialsRetriesForSuccess() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
-  @Test(
-    "Bypasses userProject options payload when client authentication is active", .disabled("PR3"))
-  func stsHandlerIgnoresWorkforcePoolUserProjectWithClientAuth() async throws {}
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.success-after-retries",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
 
-  @Test(
-    "Injects serialized userProject JSON options during token exchange form posts", .disabled("PR3")
-  )
-  func stsHandlerReceivesWorkforcePoolUserProject() async throws {}
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { request in
+      let attempt = attempts.increment()
+      if attempt <= 2 {
+        // Fail with transient 503 error for first two attempts
+        let response = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 503,
+          httpVersion: nil,
+          headerFields: [:]
+        )!
+        return (response, Data())
+      } else {
+        // Succeed on third attempt
+        let response = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 200,
+          httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, responseData)
+      }
+    }
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 3,
+      initialDelay: .milliseconds(1),
+      multiplier: 1.0,
+      maxDelay: .milliseconds(1)
+    )
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      retryConfiguration: retryConfig,
+      httpClient: httpClient
+    )
+
+    let headers = try await creds.headers()
+    #expect(
+      headers.contains {
+        $0.0 == "Authorization"
+          && $0.1 == "Bearer ya29.success-after-retries"
+      })
+    #expect(attempts.getCount() == 3)
+  }
+
+  @Test("Bypasses userProject options payload when client authentication is active")
+  func stsHandlerIgnoresWorkforcePoolUserProjectWithClientAuth() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.sts-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url == targetURL)
+      #expect(request.httpMethod == "POST")
+
+      guard let bodyData = request.httpBody,
+        let bodyString = String(data: bodyData, encoding: .utf8)
+      else {
+        Issue.record("Request body is empty")
+        let errResponse = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 400,
+          httpVersion: nil,
+          headerFields: nil
+        )!
+        return (errResponse, Data())
+      }
+
+      let queryItems = URLComponents(string: "?" + bodyString)?.queryItems ?? []
+      let params = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value) })
+
+      #expect(params["options"] == nil)
+      let expectedAuth =
+        "Basic dGVzdC1jbGllbnQtaWQ6dGVzdC1jbGllbnQtc2VjcmV0"
+      #expect(request.value(forHTTPHeaderField: "Authorization") == expectedAuth)
+
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, responseData)
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      clientID: "test-client-id",
+      clientSecret: "test-client-secret",
+      workforcePoolUserProject: "quota-project",
+      httpClient: httpClient
+    )
+
+    _ = try await creds.headers()
+  }
+
+  @Test("Injects serialized userProject JSON options during token exchange form posts")
+  func stsHandlerReceivesWorkforcePoolUserProject() async throws {
+    let provider = MockSubjectTokenProvider(token: "mock-provider-token")
+    let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
+
+    let expectedResponse = TokenResponse(
+      accessToken: "ya29.sts-token",
+      tokenType: "Bearer",
+      expiresIn: 3600,
+      issuedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+      refreshBy: nil
+    )
+
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let responseData = try encoder.encode(expectedResponse)
+
+    MockURLProtocol.requestHandler = { request in
+      #expect(request.url == targetURL)
+      #expect(request.httpMethod == "POST")
+
+      guard let bodyData = request.httpBody,
+        let bodyString = String(data: bodyData, encoding: .utf8)
+      else {
+        Issue.record("Request body is empty")
+        let errResponse = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 400,
+          httpVersion: nil,
+          headerFields: nil
+        )!
+        return (errResponse, Data())
+      }
+
+      let queryItems = URLComponents(string: "?" + bodyString)?.queryItems ?? []
+      let params = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value) })
+
+      #expect(params["options"] == "{\"userProject\":\"quota-project\"}")
+
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 200,
+        httpVersion: nil,
+        headerFields: ["Content-Type": "application/json"]
+      )!
+      return (response, responseData)
+    }
+
+    let httpClient = AuthHTTPClient(session: self.mockSession)
+    let creds = try ExternalAccountCredentials(
+      subjectTokenProvider: provider,
+      audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: targetURL,
+      workforcePoolUserProject: "quota-project",
+      httpClient: httpClient
+    )
+
+    _ = try await creds.headers()
+  }
 }

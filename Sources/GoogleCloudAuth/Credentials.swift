@@ -137,6 +137,81 @@ public enum CredentialsConfiguration: Sendable {
     universeDomain: String? = nil,
     scopes: [String]? = nil
   )
+
+  /// Programmatic credentials configuration for Workforce Identity Federation (OIDC / Apple WIF).
+  case programmaticExternalAccount(ExternalAccountConfig)
+}
+
+/// Configuration options for external account credentials.
+public struct ExternalAccountConfig: Sendable {
+  /// The provider yielding the raw subject token via custom application callbacks
+  public let subjectTokenProvider: any SubjectTokenProvider
+
+  /// The audience parameter for the Security Token Service (STS) exchange.
+  /// Typically takes the form of a workforce or workload pool provider URI.
+  public let audience: String
+
+  /// The type of the subject token being exchanged (e.g. `"urn:ietf:params:oauth:token-type:id_token"`).
+  public let subjectTokenType: String
+
+  /// The Security Token Service (STS) token exchange endpoint.
+  public let tokenURL: URL
+
+  /// Optional OAuth client ID used for client authentication.
+  public let clientID: String?
+
+  /// Optional OAuth client secret used for client authentication.
+  public let clientSecret: String?
+
+  /// Optional email of a target service account to impersonate.
+  public let targetPrincipal: String?
+
+  /// Optional user project ID used to assert billing and quota constraints.
+  /// Only allowed when exchanging tokens for a global workforce pool.
+  public let workforcePoolUserProject: String?
+
+  /// Scopes requested for the exchanged token.
+  public let scopes: [String]
+
+  /// Google Cloud universe domain override.
+  public let universeDomain: String?
+
+  /// Initializes a new instance of `ExternalAccountConfig`.
+  ///
+  /// - Parameters:
+  ///   - subjectTokenProvider: The provider yielding the raw subject token.
+  ///   - audience: The audience parameter for the exchange (e.g. Workforce Pool audience).
+  ///   - subjectTokenType: The type of the subject token.
+  ///   - tokenURL: The STS token exchange endpoint.
+  ///   - clientID: Optional OAuth client ID for client authentication.
+  ///   - clientSecret: Optional OAuth client secret for client authentication.
+  ///   - targetPrincipal: Optional service account email to impersonate.
+  ///   - workforcePoolUserProject: Optional user project for billing/quota constraints.
+  ///   - scopes: Scopes requested for the exchanged token.
+  ///   - universeDomain: Optional universe domain.
+  public init(
+    subjectTokenProvider: any SubjectTokenProvider,
+    audience: String,
+    subjectTokenType: String,
+    tokenURL: URL,
+    clientID: String? = nil,
+    clientSecret: String? = nil,
+    targetPrincipal: String? = nil,
+    workforcePoolUserProject: String? = nil,
+    scopes: [String] = [],
+    universeDomain: String? = nil
+  ) {
+    self.subjectTokenProvider = subjectTokenProvider
+    self.audience = audience
+    self.subjectTokenType = subjectTokenType
+    self.tokenURL = tokenURL
+    self.clientID = clientID
+    self.clientSecret = clientSecret
+    self.targetPrincipal = targetPrincipal
+    self.workforcePoolUserProject = workforcePoolUserProject
+    self.scopes = scopes
+    self.universeDomain = universeDomain
+  }
 }
 
 /// A type that can provide authentication headers for Google Cloud API requests.
@@ -200,6 +275,19 @@ public struct Credentials: Sendable {
         quotaProjectID: quotaProjectID,
         universeDomain: universeDomain,
         scopes: scopes
+      )
+    case let .programmaticExternalAccount(config):
+      return try ExternalAccountCredentials(
+        subjectTokenProvider: config.subjectTokenProvider,
+        audience: config.audience,
+        subjectTokenType: config.subjectTokenType,
+        tokenURL: config.tokenURL,
+        clientID: config.clientID,
+        clientSecret: config.clientSecret,
+        targetPrincipal: config.targetPrincipal,
+        workforcePoolUserProject: config.workforcePoolUserProject,
+        scopes: config.scopes,
+        universeDomain: config.universeDomain
       )
     }
   }

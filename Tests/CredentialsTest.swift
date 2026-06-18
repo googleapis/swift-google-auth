@@ -61,4 +61,27 @@ import Testing
     let ud = await credentials.universeDomain()
     #expect(ud == nil)
   }
+
+  @Test func resolveProviderForProgrammaticExternalAccount() async throws {
+    struct MockSubjectTokenProvider: SubjectTokenProvider {
+      func subjectToken() async throws -> String { "token" }
+    }
+
+    let config = ExternalAccountConfig(
+      subjectTokenProvider: MockSubjectTokenProvider(),
+      audience: "aud",
+      subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
+      tokenURL: URL(string: "https://sts.googleapis.com/v1/token")!,
+      universeDomain: "my-universe.com"
+    )
+
+    let credentials = try Credentials(
+      configuration: .programmaticExternalAccount(config)
+    )
+
+    #expect(credentials.credentialsSource is ExternalAccountCredentials)
+
+    let ud = await credentials.universeDomain()
+    #expect(ud == "my-universe.com")
+  }
 }

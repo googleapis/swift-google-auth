@@ -28,6 +28,7 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
   private let workforcePoolUserProject: String?
   private let clientID: String?
   private let clientSecret: String?
+  private let retryConfiguration: RetryConfiguration?
 
   init(
     subjectTokenProvider: any SubjectTokenProvider,
@@ -38,6 +39,7 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
     workforcePoolUserProject: String?,
     clientID: String?,
     clientSecret: String?,
+    retryConfiguration: RetryConfiguration? = nil,
     httpClient: AuthHTTPClient = AuthHTTPClient()
   ) {
     self.subjectTokenProvider = subjectTokenProvider
@@ -48,6 +50,7 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
     self.workforcePoolUserProject = workforcePoolUserProject
     self.clientID = clientID
     self.clientSecret = clientSecret
+    self.retryConfiguration = retryConfiguration
     self.stsHandler = STSHandler(httpClient: httpClient)
   }
 
@@ -63,11 +66,16 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
       clientAuthentication: clientID.map { ClientAuthentication(id: $0, secret: clientSecret) }
     )
 
-    let response = try await stsHandler.exchangeToken(
-      request: request,
-      url: tokenURL,
-      encoding: .urlEncoded
-    )
+    let response: TokenResponse = try await RetryEngine.retry(
+      configuration: retryConfiguration ?? .defaultConfiguration,
+      isRetryable: Self.isRetryable
+    ) {
+      try await stsHandler.exchangeToken(
+        request: request,
+        url: tokenURL,
+        encoding: .urlEncoded
+      )
+    }
 
     let expirationDate = Date().addingTimeInterval(Double(response.expiresIn))
     return Token(
@@ -117,6 +125,7 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
     workforcePoolUserProject: String? = nil,
     scopes: [String] = [],
     universeDomain: String? = nil,
+    retryConfiguration: RetryConfiguration? = nil,
     httpClient: AuthHTTPClient = AuthHTTPClient()
   ) throws {
     // Validate required configuration fields are not empty
@@ -160,6 +169,7 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
       workforcePoolUserProject: workforcePoolUserProject,
       clientID: clientID,
       clientSecret: clientSecret,
+      retryConfiguration: retryConfiguration,
       httpClient: httpClient
     )
 
@@ -172,7 +182,7 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
 
   func headers() async throws -> AuthHeaders {
     let token = try await cache.token()
-    var headers = [("Authorization", "Bearer \(token.accessToken)")]
+    var headers: AuthHeaders = [("Authorization", "\(token.tokenType) \(token.accessToken)")]
     if let project = workforcePoolUserProject {
       headers.append(("X-Goog-User-Project", project))
     }
@@ -186,5 +196,18 @@ struct ExternalAccountCredentials: CredentialsSource, Sendable {
 
 /// Helper function to validate if the audience refers to a global workforce pool.
 private func isValidWorkforcePoolAudience(_ audience: String) -> Bool {
-  return audience.hasPrefix("//iam.googleapis.com/locations/global/workforcePools/")
+  var path = audience
+  if path.hasPrefix("//iam.googleapis.com/") {
+    path.removeFirst("//iam.googleapis.com/".count)
+  }
+
+  let components = path.split(separator: "/", omittingEmptySubsequences: false)
+  guard components.count == 6 else { return false }
+
+  return components[0] == "locations"
+    && !components[1].isEmpty
+    && components[2] == "workforcePools"
+    && !components[3].isEmpty
+    && components[4] == "providers"
+    && !components[5].isEmpty
 }
