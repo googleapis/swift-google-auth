@@ -100,7 +100,7 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
 }
 
 /// Credentials backing Workforce Identity Federation (OIDC / Apple WIF) external accounts.
-struct ExternalAccountCredentials: CredentialsSource, Sendable {
+struct ExternalAccountCredentials: CredentialsProvider, Sendable {
   private let cache: TokenCache<ContinuousClock>
 
   let subjectTokenProvider: any SubjectTokenProvider

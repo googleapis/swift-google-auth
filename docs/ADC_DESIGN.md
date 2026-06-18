@@ -93,7 +93,7 @@ implementation.
 
 To prevent thundering herd problems and ensure optimal performance during token
 refreshes, token caching will be the direct responsibility of the underlying
-`CredentialsSource` implementations (e.g., `ServiceAccountCredentials`,
+`CredentialsProvider` implementations (e.g., `ServiceAccountCredentials`,
 `MDSCredentials`). Rather than relying on a generic, centralized wrapper, each
 provider will encapsulate its own caching logic, allowing for provider-specific
 optimization and behavior.

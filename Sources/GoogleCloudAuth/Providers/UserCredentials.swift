@@ -29,7 +29,7 @@ internal struct UserCredentialsParser: CredentialSourceParser {
     universeDomain: String?,
     scopes: [String],
     environment: [String: String]
-  ) throws -> any CredentialsSource {
+  ) throws -> any CredentialsProvider {
     let keyJSON = try JSONSerialization.data(withJSONObject: config)
     return try UserCredentials(
       keyJSON: keyJSON,
@@ -41,7 +41,7 @@ internal struct UserCredentialsParser: CredentialSourceParser {
 }
 
 /// Creates credentials backed by a local User OAuth2 credentials JSON key file.
-struct UserCredentials: CredentialsSource, Sendable {
+struct UserCredentials: CredentialsProvider, Sendable {
   private let cache: TokenCache<ContinuousClock>
   private let universeDomain: String?
 
@@ -111,7 +111,7 @@ struct UserCredentials: CredentialsSource, Sendable {
     )
   }
 
-  // MARK: - CredentialsSource
+  // MARK: - CredentialsProvider
 
   func headers() async throws -> AuthHeaders {
     let token = try await cache.token()

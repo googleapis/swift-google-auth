@@ -30,7 +30,7 @@ enum ADC: Sendable {
     universeDomain: String? = nil,
     scopes: [String] = [],
     environment: [String: String] = ProcessInfo.processInfo.environment
-  ) throws -> any CredentialsSource {
+  ) throws -> any CredentialsProvider {
     _ = isInitialized
     let quotaProject = environment["GOOGLE_CLOUD_QUOTA_PROJECT"] ?? quotaProjectID
 

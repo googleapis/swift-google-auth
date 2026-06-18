@@ -215,7 +215,7 @@ public struct ExternalAccountConfig: Sendable {
 }
 
 /// A type that can provide authentication headers for Google Cloud API requests.
-protocol CredentialsSource: Sendable {
+protocol CredentialsProvider: Sendable {
   /// Asynchronously retrieves the request headers required to authenticate a request.
   ///
   /// - Returns: An array of key-value tuples representing HTTP headers.
@@ -229,28 +229,28 @@ protocol CredentialsSource: Sendable {
 
 /// The public entry point to authenticate Google Cloud API requests.
 public struct Credentials: Sendable {
-  let credentialsSource: any CredentialsSource
+  let credentialsProvider: any CredentialsProvider
 
   /// Initializes credentials using a specific configuration (defaults to automatic ADC resolution).
   public init(configuration: CredentialsConfiguration = .adc()) throws {
-    self.credentialsSource = try Self.resolveCredentialsSource(
+    self.credentialsProvider = try Self.resolveCredentialsProvider(
       configuration: configuration)
   }
 
   /// Asynchronously retrieves the request headers required to authenticate a request.
   public func headers() async throws -> AuthHeaders {
-    return try await self.credentialsSource.headers()
+    return try await self.credentialsProvider.headers()
   }
 
   /// Retrieves the universe domain associated with the credentials.
   public func universeDomain() async -> String? {
-    return await self.credentialsSource.universeDomain()
+    return await self.credentialsProvider.universeDomain()
   }
 
   // MARK: - Backend Resolvers
 
-  private static func resolveCredentialsSource(configuration: CredentialsConfiguration) throws
-    -> any CredentialsSource
+  private static func resolveCredentialsProvider(configuration: CredentialsConfiguration) throws
+    -> any CredentialsProvider
   {
     switch configuration {
     case let .adc(quotaProjectID, universeDomain, scopes, environment):

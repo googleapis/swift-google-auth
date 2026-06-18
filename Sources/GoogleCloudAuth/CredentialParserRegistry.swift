@@ -23,7 +23,7 @@ internal protocol CredentialSourceParser: Sendable {
     universeDomain: String?,
     scopes: [String],
     environment: [String: String]
-  ) throws -> any CredentialsSource
+  ) throws -> any CredentialsProvider
 }
 
 internal final class CredentialParserRegistry: Sendable {
@@ -44,7 +44,7 @@ internal final class CredentialParserRegistry: Sendable {
     universeDomain: String?,
     scopes: [String],
     environment: [String: String]
-  ) throws -> (any CredentialsSource)? {
+  ) throws -> (any CredentialsProvider)? {
     return try parsers.withLock { parsers in
       guard let parserType = parsers[type] else { return nil }
       return try parserType.init().parse(

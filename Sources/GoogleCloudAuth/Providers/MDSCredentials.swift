@@ -19,7 +19,7 @@ import Foundation
 #endif
 
 /// Creates credentials backed by the local GCP Compute Engine Metadata Service (MDS).
-struct MDSCredentials: CredentialsSource, Sendable {
+struct MDSCredentials: CredentialsProvider, Sendable {
   let provider: MDSAccessTokenProvider
   let cache: TokenCache<ContinuousClock>
   var quotaProjectID: String? { provider.quotaProjectID }
@@ -50,7 +50,7 @@ struct MDSCredentials: CredentialsSource, Sendable {
     )
   }
 
-  // MARK: - CredentialsSource
+  // MARK: - CredentialsProvider
 
   func headers() async throws -> [(String, String)] {
     let token = try await self.cache.token()

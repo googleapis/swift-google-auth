@@ -19,7 +19,7 @@ import Foundation
 #endif
 
 /// An empty credentials source for unauthenticated requests.
-struct AnonymousCredentials: CredentialsSource {
+struct AnonymousCredentials: CredentialsProvider {
   func headers() async throws -> AuthHeaders {
     // Dummy empty implementation for skeleton phase
     return []

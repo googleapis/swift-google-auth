@@ -179,7 +179,7 @@ graph TD
 ## 1. Public API & Protocols
 
 The library delegates credential resolution to concrete internal sources
-conforming to the `CredentialsSource` protocol. This internal protocol
+conforming to the `CredentialsProvider` protocol. This internal protocol
 handles token retrieval and formatting.
 
 HTTP headers are represented as `AuthHeaders` (which is a typealias for an
@@ -189,7 +189,7 @@ compatibility with the GAX package and test suites.
 
 ```swift
 /// A type that can provide authentication headers for Google Cloud API requests.
-protocol CredentialsSource: Sendable {
+protocol CredentialsProvider: Sendable {
   /// Asynchronously retrieves the request headers required to authenticate a request.
   ///
   /// - Returns: An array of key-value tuples representing HTTP headers.
@@ -201,15 +201,15 @@ protocol CredentialsSource: Sendable {
 ```
 
 The public `Credentials` API signature is defined in the `# Overview` section.
-Internally, `Credentials` is backed by an instance of `CredentialsSource`
+Internally, `Credentials` is backed by an instance of `CredentialsProvider`
 resolved at load time:
 
 ```swift
 public struct Credentials: Sendable {
-  private let credentialsSource: any CredentialsSource
+  private let credentialsProvider: any CredentialsProvider
 
-  internal init(credentialsSource: any CredentialsSource) {
-    self.credentialsSource = credentialsSource
+  internal init(credentialsProvider: any CredentialsProvider) {
+    self.credentialsProvider = credentialsProvider
   }
 }
 ```
@@ -236,7 +236,7 @@ initialization, following standard search paths defined in
 ### B. Structured Credentials Sources
 
 We implement three concrete, structural credentials sources that satisfy
-`CredentialsSource` to encapsulate different authentication channels:
+`CredentialsProvider` to encapsulate different authentication channels:
 
 -   **`UserCredentials`**: Resolves and refreshes tokens using User OAuth2
     credentials JSON key data.

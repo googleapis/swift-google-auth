@@ -23,7 +23,7 @@ import Testing
 
     // Verify the backing provider is the new experimental Swift wrapper shell
     #expect(
-      String(describing: type(of: credentials.credentialsSource)).contains("AnonymousCredentials")
+      String(describing: type(of: credentials.credentialsProvider)).contains("AnonymousCredentials")
     )
 
     let headers = try await credentials.headers()
@@ -37,7 +37,7 @@ import Testing
     let credentials = try Credentials(configuration: .adc(environment: [:]))
 
     #expect(
-      String(describing: type(of: credentials.credentialsSource)).contains("MDSCredentials")
+      String(describing: type(of: credentials.credentialsProvider)).contains("MDSCredentials")
     )
   }
 
@@ -55,7 +55,7 @@ import Testing
     let credentials = try Credentials(configuration: .user(keyJSON: dataData))
 
     #expect(
-      String(describing: type(of: credentials.credentialsSource)).contains("UserCredentials")
+      String(describing: type(of: credentials.credentialsProvider)).contains("UserCredentials")
     )
 
     let ud = await credentials.universeDomain()
@@ -79,7 +79,7 @@ import Testing
       configuration: .programmaticExternalAccount(config)
     )
 
-    #expect(credentials.credentialsSource is ExternalAccountCredentials)
+    #expect(credentials.credentialsProvider is ExternalAccountCredentials)
 
     let ud = await credentials.universeDomain()
     #expect(ud == "my-universe.com")

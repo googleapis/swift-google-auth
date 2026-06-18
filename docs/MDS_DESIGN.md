@@ -48,7 +48,7 @@ credential provider that integrates seamlessly with the `TokenCache` actor and
 # Overview
 
 We will introduce a new `MDSCredentials` struct that conforms to
-`CredentialsSource`. It will encapsulate an `MDSAccessTokenProvider` which
+`CredentialsProvider`. It will encapsulate an `MDSAccessTokenProvider` which
 handles the HTTP requests to
 `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token`.
 
@@ -69,7 +69,7 @@ The package-internal credential struct.
 
 -   Exposes a configuration initializer directly without a separate
     configuration struct.
--   Conforms to `CredentialsSource` to be consumed by `GoogleCloudGax`.
+-   Conforms to `CredentialsProvider` to be consumed by `GoogleCloudGax`.
 
 ### `MDSAccessTokenProvider`
 
@@ -131,7 +131,7 @@ The provider leverages the native swift retry engine.
 ### Code Structures:
 
 ```swift
-package struct MDSCredentials: CredentialsSource, Sendable {
+package struct MDSCredentials: CredentialsProvider, Sendable {
     package init(
         endpoint: URL? = nil,
         quotaProjectID: String? = nil,

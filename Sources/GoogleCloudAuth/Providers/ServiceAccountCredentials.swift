@@ -25,7 +25,7 @@ internal struct ServiceAccountParser: CredentialSourceParser {
     universeDomain: String?,
     scopes: [String],
     environment: [String: String]
-  ) throws -> any CredentialsSource {
+  ) throws -> any CredentialsProvider {
     let data = try JSONSerialization.data(withJSONObject: config, options: [])
     let accessSpecifier = scopes.isEmpty ? nil : AccessSpecifier.scopes(scopes)
     return try ServiceAccountCredentials(
@@ -38,7 +38,7 @@ internal struct ServiceAccountParser: CredentialSourceParser {
 }
 
 /// Creates credentials backed by a local Service Account JSON key file.
-struct ServiceAccountCredentials: CredentialsSource, Sendable {
+struct ServiceAccountCredentials: CredentialsProvider, Sendable {
   private let tokenProvider: TokenCache<ContinuousClock>
   private let quotaProjectID: String?
   private let universeDomain: String?

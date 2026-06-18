@@ -17,7 +17,7 @@ import Testing
 
 @testable import GoogleCloudAuth
 
-struct MockCredentialsSource: CredentialsSource {
+struct MockCredentialsProvider: CredentialsProvider {
   func headers() async throws -> [(String, String)] {
     return [("Authorization", "Bearer mock")]
   }
@@ -35,8 +35,8 @@ struct MockParser: CredentialSourceParser {
     universeDomain: String?,
     scopes: [String],
     environment: [String: String]
-  ) throws -> any CredentialsSource {
-    return MockCredentialsSource()
+  ) throws -> any CredentialsProvider {
+    return MockCredentialsProvider()
   }
 }
 
@@ -70,7 +70,7 @@ struct CredentialParserRegistryTests {
       environment: [:]
     )
     #expect(source != nil)
-    #expect(source is MockCredentialsSource)
+    #expect(source is MockCredentialsProvider)
   }
 
   @Test("Registry has no obvious thread-safety problems for concurrent registrations")
