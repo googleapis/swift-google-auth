@@ -85,7 +85,7 @@ struct ExternalAccountTests {
     let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience:
         "//iam.googleapis.com/projects/123/locations/global/workloadPools/pool/providers/prov",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
@@ -117,7 +117,7 @@ struct ExternalAccountTests {
     let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -133,7 +133,7 @@ struct ExternalAccountTests {
     let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -151,7 +151,7 @@ struct ExternalAccountTests {
     // Empty audience should throw parseError
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience: "",
         subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
         tokenURL: targetURL
@@ -161,7 +161,7 @@ struct ExternalAccountTests {
     // Empty subjectTokenType should throw parseError
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience: "aud",
         subjectTokenType: "",
         tokenURL: targetURL
@@ -176,7 +176,7 @@ struct ExternalAccountTests {
 
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience: "aud",
         subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
         tokenURL: targetURL,
@@ -196,7 +196,7 @@ struct ExternalAccountTests {
 
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience: workloadAudience,
         subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
         tokenURL: targetURL,
@@ -212,7 +212,7 @@ struct ExternalAccountTests {
 
     // 1. Valid audience without //iam.googleapis.com/ prefix
     _ = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "locations/global/workforcePools/pool/providers/provider",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -221,7 +221,7 @@ struct ExternalAccountTests {
 
     // 2. Valid audience with prefix
     _ = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "//iam.googleapis.com/locations/global/workforcePools/pool/providers/provider",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -231,7 +231,7 @@ struct ExternalAccountTests {
     // 3. Invalid audience: missing provider segment
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience: "//iam.googleapis.com/locations/global/workforcePools/pool",
         subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
         tokenURL: targetURL,
@@ -242,7 +242,7 @@ struct ExternalAccountTests {
     // 4. Invalid audience: extra trailing segments
     #expect(throws: CredentialsError.self) {
       _ = try ExternalAccountCredentials(
-        subjectTokenProvider: provider,
+        credentialSource: .programmatic(subjectTokenProvider: provider),
         audience:
           "//iam.googleapis.com/locations/global/workforcePools/pool/providers/provider/extra",
         subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
@@ -286,7 +286,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -353,7 +353,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -388,7 +388,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -415,7 +415,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -474,7 +474,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -551,7 +551,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "aud",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -621,7 +621,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,
@@ -684,7 +684,7 @@ struct ExternalAccountTests {
 
     let httpClient = AuthHTTPClient(session: self.mockSession)
     let creds = try ExternalAccountCredentials(
-      subjectTokenProvider: provider,
+      credentialSource: .programmatic(subjectTokenProvider: provider),
       audience: "//iam.googleapis.com/locations/global/workforcePools/wpool/providers/wprov",
       subjectTokenType: "urn:ietf:params:oauth:token-type:id_token",
       tokenURL: targetURL,

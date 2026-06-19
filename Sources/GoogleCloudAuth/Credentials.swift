@@ -144,8 +144,13 @@ public enum CredentialsConfiguration: Sendable {
 
 /// Configuration options for external account credentials.
 public struct ExternalAccountConfig: Sendable {
-  /// The provider yielding the raw subject token via custom application callbacks
-  public let subjectTokenProvider: any SubjectTokenProvider
+  public enum CredentialSource: Sendable {
+    /// The subject token is resolved programmatically via a custom callback.
+    case programmatic(subjectTokenProvider: any SubjectTokenProvider)
+  }
+
+  /// The source type for external credentials.
+  public let credentialSource: CredentialSource
 
   /// The audience parameter for the Security Token Service (STS) exchange.
   /// Typically takes the form of a workforce or workload pool provider URI.
@@ -158,59 +163,48 @@ public struct ExternalAccountConfig: Sendable {
   public let tokenURL: URL
 
   /// Optional OAuth client ID used for client authentication.
-  public let clientID: String?
+  public var clientID: String? = nil
 
   /// Optional OAuth client secret used for client authentication.
-  public let clientSecret: String?
+  public var clientSecret: String? = nil
 
   /// Optional email of a target service account to impersonate.
-  public let targetPrincipal: String?
+  public var targetPrincipal: String? = nil
 
   /// Optional user project ID used to assert billing and quota constraints.
   /// Only allowed when exchanging tokens for a global workforce pool.
-  public let workforcePoolUserProject: String?
+  public var workforcePoolUserProject: String? = nil
 
   /// Scopes requested for the exchanged token.
-  public let scopes: [String]
+  public var scopes: [String] = []
 
   /// Google Cloud universe domain override.
-  public let universeDomain: String?
+  public var universeDomain: String? = nil
 
   /// Initializes a new instance of `ExternalAccountConfig`.
   ///
   /// - Parameters:
-  ///   - subjectTokenProvider: The provider yielding the raw subject token.
+  ///   - credentialSource: The source type for external credentials.
   ///   - audience: The audience parameter for the exchange (e.g. Workforce Pool audience).
   ///   - subjectTokenType: The type of the subject token.
   ///   - tokenURL: The STS token exchange endpoint.
-  ///   - clientID: Optional OAuth client ID for client authentication.
-  ///   - clientSecret: Optional OAuth client secret for client authentication.
-  ///   - targetPrincipal: Optional service account email to impersonate.
-  ///   - workforcePoolUserProject: Optional user project for billing/quota constraints.
-  ///   - scopes: Scopes requested for the exchanged token.
-  ///   - universeDomain: Optional universe domain.
   public init(
-    subjectTokenProvider: any SubjectTokenProvider,
+    credentialSource: CredentialSource,
     audience: String,
     subjectTokenType: String,
-    tokenURL: URL,
-    clientID: String? = nil,
-    clientSecret: String? = nil,
-    targetPrincipal: String? = nil,
-    workforcePoolUserProject: String? = nil,
-    scopes: [String] = [],
-    universeDomain: String? = nil
+    tokenURL: URL
   ) {
-    self.subjectTokenProvider = subjectTokenProvider
+    self.credentialSource = credentialSource
     self.audience = audience
     self.subjectTokenType = subjectTokenType
     self.tokenURL = tokenURL
-    self.clientID = clientID
-    self.clientSecret = clientSecret
-    self.targetPrincipal = targetPrincipal
-    self.workforcePoolUserProject = workforcePoolUserProject
-    self.scopes = scopes
-    self.universeDomain = universeDomain
+  }
+
+  /// Configures optional properties of `ExternalAccountConfig` using a closure.
+  public func with(_ configure: (inout ExternalAccountConfig) -> Void) -> ExternalAccountConfig {
+    var copy = self
+    configure(&copy)
+    return copy
   }
 }
 
@@ -278,7 +272,7 @@ public struct Credentials: Sendable {
       )
     case let .programmaticExternalAccount(config):
       return try ExternalAccountCredentials(
-        subjectTokenProvider: config.subjectTokenProvider,
+        credentialSource: config.credentialSource,
         audience: config.audience,
         subjectTokenType: config.subjectTokenType,
         tokenURL: config.tokenURL,

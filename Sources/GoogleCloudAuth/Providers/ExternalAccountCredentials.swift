@@ -115,7 +115,7 @@ struct ExternalAccountCredentials: CredentialsProvider, Sendable {
   let universeDomain: String?
 
   init(
-    subjectTokenProvider: any SubjectTokenProvider,
+    credentialSource: ExternalAccountConfig.CredentialSource,
     audience: String,
     subjectTokenType: String,
     tokenURL: URL,
@@ -128,6 +128,10 @@ struct ExternalAccountCredentials: CredentialsProvider, Sendable {
     retryConfiguration: RetryConfiguration? = nil,
     httpClient: AuthHTTPClient = AuthHTTPClient()
   ) throws {
+    guard case let .programmatic(subjectTokenProvider) = credentialSource else {
+      throw CredentialsError.parseError("Unsupported credential source type")
+    }
+
     // Validate required configuration fields are not empty
     guard !audience.isEmpty else {
       throw CredentialsError.parseError("audience parameter must not be empty")
