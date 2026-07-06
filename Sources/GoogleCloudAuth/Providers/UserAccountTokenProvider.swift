@@ -60,7 +60,7 @@ struct UserAccountTokenProvider: TokenProvider {
     )
   }
 
-  private static func isRetryable(_ error: Error) -> Bool {
+  static func isRetryable(_ error: Error) -> Bool {
     if let httpError = error as? AuthHTTPError {
       let code = httpError.statusCode
       return code == 500 || code == 503 || code == 408 || code == 429

@@ -19,6 +19,8 @@ import Testing
 #endif
 @testable import GoogleCloudAuth
 
+typealias UserCredentials = UserCredentialsGeneric<TestClock>
+
 @Suite(.serialized) struct UserCredentialsTest {
   private let mockSession: URLSession
 
@@ -53,7 +55,8 @@ import Testing
       user: mockData,
       universeDomain: defaultUniverseDomain,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     // Trigger headers to ensure background task is resolved or handled
@@ -101,7 +104,8 @@ import Testing
       user: data,
       scopes: nil,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     let headers = try await source.headers()
@@ -163,7 +167,8 @@ import Testing
       user: data,
       scopes: ["scope1", "scope2"],
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     let headers = try await source.headers()
@@ -207,7 +212,8 @@ import Testing
       user: data,
       scopes: nil,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: retryConfig
+      retryConfiguration: retryConfig,
+      clock: TestClock()
     )
 
     await #expect(throws: AuthHTTPError.self) {
@@ -239,7 +245,8 @@ import Testing
       user: data,
       scopes: nil,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     await #expect(throws: AuthHTTPError.self) {
@@ -273,7 +280,8 @@ import Testing
       user: data,
       scopes: nil,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     await #expect(throws: AuthHTTPError.self) {
@@ -343,7 +351,8 @@ import Testing
       user: data,
       scopes: nil,
       httpClient: AuthHTTPClient(session: self.mockSession),
-      retryConfiguration: .defaultConfiguration
+      retryConfiguration: .defaultConfiguration,
+      clock: TestClock()
     )
 
     // Spawn 10 concurrent headers() fetches
@@ -373,6 +382,64 @@ import Testing
     #expect(finalCount == 1)
   }
 
+  @Test func testReproNonRetryableRetry() async throws {
+    let targetURL = URL(string: "https://oauth2.googleapis.com/token")!
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      attempts.increment()
+      let response = HTTPURLResponse(
+        url: targetURL,
+        statusCode: 401,
+        httpVersion: nil as String?,
+        headerFields: nil as [String: String]?
+      )!
+      let errorPayload = "{\"error\": \"invalid_grant\"}".data(using: .utf8)!
+      return (response, errorPayload)
+    }
+
+    let data = UserAccountData(
+      type: "authorized_user",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      refreshToken: "test-refresh-token"
+    )
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 5,
+      initialDelay: .seconds(0.01),
+      multiplier: 1.5,
+      maxDelay: .seconds(0.1)
+    )
+
+    let clock = TestClock()
+
+    let source = try UserCredentials(
+      user: data,
+      scopes: nil,
+      httpClient: AuthHTTPClient(session: self.mockSession),
+      retryConfiguration: retryConfig,
+      clock: clock
+    )
+
+    await #expect(throws: AuthHTTPError.self) {
+      _ = try await source.headers()
+    }
+
+    // Give the background task a moment to run and either sleep or terminate.
+    try? await Task.sleep(for: .milliseconds(100))
+
+    // Real-time sleeps are necessary because background refresh loops and URLSession
+    // mock protocols execute asynchronously across thread boundaries.
+    if clock.hasSleepers {
+      clock.advance(by: .seconds(11))
+      // Wait for the async retry attempt to complete
+      try? await Task.sleep(for: .milliseconds(100))
+    }
+
+    #expect(attempts.getCount() == 1)
+  }
+
   @Test func initializerRejectsNonDefaultUniverse() async throws {
     let mockData = UserAccountData(
       type: "authorized_user",
@@ -386,7 +453,8 @@ import Testing
         user: mockData,
         universeDomain: "custom.com",
         httpClient: AuthHTTPClient(session: self.mockSession),
-        retryConfiguration: .defaultConfiguration
+        retryConfiguration: .defaultConfiguration,
+        clock: TestClock()
       )
     } throws: { error in
       guard let credError = error as? CredentialsError else { return false }

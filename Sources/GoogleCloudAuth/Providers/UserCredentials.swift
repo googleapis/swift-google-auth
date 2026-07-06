@@ -41,37 +41,12 @@ internal struct UserCredentialsParser: CredentialSourceParser {
 }
 
 /// Creates credentials backed by a local User OAuth2 credentials JSON key file.
-struct UserCredentials: CredentialsProvider, Sendable {
-  private let cache: TokenCache<ContinuousClock>
+typealias UserCredentials = UserCredentialsGeneric<ContinuousClock>
+
+struct UserCredentialsGeneric<C: Clock>: CredentialsProvider, Sendable
+where C.Instant.Duration == Duration {
+  private let cache: TokenCache<C>
   private let universeDomain: String?
-
-  /// Public-facing initialization matching CredentialsConfiguration.user constraints
-  init(
-    keyJSON: Data,
-    quotaProjectID: String? = nil,
-    universeDomain: String? = nil,
-    scopes: [String]? = nil
-  ) throws {
-    let key: UserAccountData
-    do {
-      let decoder = JSONDecoder()
-      decoder.keyDecodingStrategy = .convertFromSnakeCase
-      key = try decoder.decode(UserAccountData.self, from: keyJSON)
-    } catch {
-      throw CredentialsError.parseError(
-        "Failed to parse User Account key JSON: \(error.localizedDescription)"
-      )
-    }
-
-    try self.init(
-      user: key,
-      quotaProjectID: quotaProjectID,
-      universeDomain: universeDomain,
-      scopes: scopes,
-      httpClient: AuthHTTPClient(),
-      retryConfiguration: .defaultConfiguration
-    )
-  }
 
   /// Dependency injection for tests
   init(
@@ -80,7 +55,8 @@ struct UserCredentials: CredentialsProvider, Sendable {
     universeDomain: String? = nil,
     scopes: [String]? = nil,
     httpClient: AuthHTTPClient,
-    retryConfiguration: RetryConfiguration
+    retryConfiguration: RetryConfiguration,
+    clock: C
   ) throws {
     if let universeDomain = universeDomain, universeDomain != defaultUniverseDomain {
       throw CredentialsError.notSupported(
@@ -107,7 +83,8 @@ struct UserCredentials: CredentialsProvider, Sendable {
 
     self.cache = TokenCache(
       provider: provider,
-      clock: ContinuousClock()
+      clock: clock,
+      isRetryable: { UserAccountTokenProvider.isRetryable($0) }
     )
   }
 
@@ -120,5 +97,43 @@ struct UserCredentials: CredentialsProvider, Sendable {
 
   func universeDomain() async -> String? {
     return self.universeDomain
+  }
+}
+
+extension UserCredentialsGeneric where C == ContinuousClock {
+  /// Initializes `UserCredentials` from a raw JSON data payload.
+  ///
+  /// - Parameters:
+  ///   - keyJSON: The JSON data containing the user account credentials.
+  ///   - quotaProjectID: An optional project ID used for quota and billing purposes.
+  ///   - universeDomain: An optional universe domain to constrain the credentials to (defaults to `googleapis.com`).
+  ///   - scopes: An optional array of OAuth 2.0 scopes to request.
+  /// - Throws: A `CredentialsError.parseError` if the JSON data is invalid or missing required fields.
+  init(
+    keyJSON: Data,
+    quotaProjectID: String? = nil,
+    universeDomain: String? = nil,
+    scopes: [String]? = nil
+  ) throws {
+    let key: UserAccountData
+    do {
+      let decoder = JSONDecoder()
+      decoder.keyDecodingStrategy = .convertFromSnakeCase
+      key = try decoder.decode(UserAccountData.self, from: keyJSON)
+    } catch {
+      throw CredentialsError.parseError(
+        "Failed to parse User Account key JSON: \(error.localizedDescription)"
+      )
+    }
+
+    try self.init(
+      user: key,
+      quotaProjectID: quotaProjectID,
+      universeDomain: universeDomain,
+      scopes: scopes,
+      httpClient: AuthHTTPClient(),
+      retryConfiguration: .defaultConfiguration,
+      clock: ContinuousClock()
+    )
   }
 }
