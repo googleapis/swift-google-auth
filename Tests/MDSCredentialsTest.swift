@@ -381,4 +381,46 @@ private final class MockURLProtocol: URLProtocol {
     #expect(
       count == 1, "Expected exactly 1 network request due to proactive actor caching, got \(count)")
   }
+
+  @Test func retriesOnTransientNetworkErrors() async throws {
+    let targetURL = URL(
+      string:
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+    )!
+    struct MockResponse: Encodable {
+      let accessToken: String; let expiresIn: Int; let tokenType: String
+    }
+    let encodedData = try JSONEncoder().encode(
+      MockResponse(accessToken: "mock-token", expiresIn: 3600, tokenType: "Bearer"))
+
+    let attempts = CallCounter()
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      #expect(request.httpMethod == "GET")
+      #expect(request.url?.path == "/computeMetadata/v1/instance/service-accounts/default/token")
+      #expect(request.value(forHTTPHeaderField: "Metadata-Flavor") == "Google")
+      let count = attempts.increment()
+      if count == 1 {
+        throw URLError(.timedOut)
+      }
+      return (
+        HTTPURLResponse(
+          url: targetURL, statusCode: 200, httpVersion: nil,
+          headerFields: ["Content-Type": "application/json"])!, encodedData
+      )
+    }
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 2, initialDelay: .milliseconds(1), multiplier: 1.0, maxDelay: .milliseconds(1))
+    let client = AuthHTTPClient(session: self.mockSession)
+    let provider = MDSCredentials(retryConfiguration: retryConfig, client: client, environment: [:])
+    let headers = try await provider.headers()
+
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer mock-token" },
+      "Missing authorization header in \(headers)"
+    )
+    let count = attempts.getCount()
+    #expect(count == 2, "Expected exactly 2 execution attempts, got \(count)")
+  }
 }

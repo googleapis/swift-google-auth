@@ -45,13 +45,10 @@ struct MDSAccessTokenProvider: TokenProvider, Sendable {
   }
 
   static func isRetryable(_ error: Error) -> Bool {
-    if let authError = error as? AuthHTTPError {
-      if case .transportError = authError { return true }
-      if let status = authError.statusCode {
-        return status == 500 || status == 503 || status == 429 || status == 408
-      }
+    if let authError = error as? AuthHTTPError, let status = authError.statusCode {
+      return status >= 500 || status == 429 || status == 408
     }
-    return false
+    return true
   }
 
   private func missingConfigurationError(targetURL: URL, underlyingError: AuthHTTPError)

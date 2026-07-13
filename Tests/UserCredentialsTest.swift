@@ -464,6 +464,77 @@ typealias UserCredentials = UserCredentialsGeneric<TestClock>
       return false
     }
   }
+
+  @Test func testRetryOnTransientNetworkError() async throws {
+    let targetURL = URL(string: "https://oauth2.googleapis.com/token")!
+    let attempts = CallCounter()
+    let responsePayload = Oauth2RefreshResponse(
+      accessToken: "recovered-timeout-token",
+      expiresIn: 3600,
+      tokenType: "Bearer"
+    )
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let encodedData = try encoder.encode(responsePayload)
+
+    MockURLProtocol.requestHandler = { (request: URLRequest) in
+      attempts.increment()
+      if attempts.getCount() == 1 {
+        throw URLError(.timedOut)
+      } else {
+        let response = HTTPURLResponse(
+          url: targetURL,
+          statusCode: 200,
+          httpVersion: nil as String?,
+          headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, encodedData)
+      }
+    }
+
+    let data = UserAccountData(
+      type: "authorized_user",
+      clientId: "test-client-id",
+      clientSecret: "test-client-secret",
+      refreshToken: "test-refresh-token"
+    )
+
+    let retryConfig = RetryConfiguration(
+      maxAttempts: 3,
+      initialDelay: .seconds(0.01),
+      multiplier: 1.5,
+      maxDelay: .seconds(0.1)
+    )
+
+    let clock = TestClock()
+
+    let source = try UserCredentials(
+      user: data,
+      scopes: nil,
+      httpClient: AuthHTTPClient(session: self.mockSession),
+      retryConfiguration: retryConfig,
+      clock: clock
+    )
+
+    // Give the background task a moment to run and fail (1st attempt)
+    try? await Task.sleep(for: .milliseconds(100))
+
+    // If it is retryable, it should have registered a sleeper.
+    #expect(clock.hasSleepers == true)
+
+    if clock.hasSleepers {
+      // Advance clock to trigger retry (2nd attempt, should succeed)
+      clock.advance(by: .seconds(11))
+      // Wait for the async retry attempt to complete and update cache
+      try? await Task.sleep(for: .milliseconds(100))
+    }
+
+    // Now headers() should succeed using the cached token
+    let headers = try await source.headers()
+    #expect(
+      headers.contains { $0.0 == "Authorization" && $0.1 == "Bearer recovered-timeout-token" })
+    #expect(attempts.getCount() == 2)
+  }
 }
 
 private final class MockURLProtocol: URLProtocol {

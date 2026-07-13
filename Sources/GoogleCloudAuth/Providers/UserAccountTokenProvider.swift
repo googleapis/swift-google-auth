@@ -61,16 +61,10 @@ struct UserAccountTokenProvider: TokenProvider {
   }
 
   static func isRetryable(_ error: Error) -> Bool {
-    if let httpError = error as? AuthHTTPError {
-      let code = httpError.statusCode
-      return code == 500 || code == 503 || code == 408 || code == 429
+    if let authError = error as? AuthHTTPError, let status = authError.statusCode {
+      return status >= 500 || status == 429 || status == 408
     }
-    if let urlError = error as? URLError {
-      let code = urlError.code
-      return code == .timedOut || code == .cannotFindHost || code == .cannotConnectToHost
-        || code == .networkConnectionLost || code == .notConnectedToInternet
-    }
-    return false
+    return true
   }
 }
 

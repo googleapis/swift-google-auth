@@ -408,8 +408,8 @@ struct ExternalAccountTests {
     #expect(attempts.getCount() == 1)
   }
 
-  @Test("Programmatic credentials do not retry on custom provider errors")
-  func programmaticCredentialsDoesNotRetryOnProviderErrors() async throws {
+  @Test("Programmatic credentials retry on custom provider errors")
+  func programmaticCredentialsRetriesOnProviderErrors() async throws {
     let provider = MockFailingSubjectTokenProvider()
     let targetURL = URL(string: "https://sts.googleapis.com/v1/token")!
 
@@ -430,13 +430,13 @@ struct ExternalAccountTests {
     let count1 = await provider.callCount
     #expect(count1 == 1)
 
-    // Second attempt should fail immediately without calling provider again (permanent error cached in TokenCache)
+    // Since it's retryable, second attempt should call provider again
     await #expect(throws: Error.self) {
       _ = try await creds.headers()
     }
 
     let count2 = await provider.callCount
-    #expect(count2 == 1)
+    #expect(count2 >= 2)
   }
 
   @Test("Successfully signs tokens and performs service account impersonation", .disabled("PR3"))

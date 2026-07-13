@@ -86,16 +86,10 @@ struct ExternalAccountTokenProvider: TokenProvider, Sendable {
   }
 
   static func isRetryable(_ error: Error) -> Bool {
-    guard let authError = error as? AuthHTTPError else { return false }
-    switch authError {
-    case .transportError:
-      return true
-    case .unsuccessfulResponse(let response, _):
-      let status = response.statusCode
+    if let authError = error as? AuthHTTPError, let status = authError.statusCode {
       return status >= 500 || status == 429 || status == 408
-    default:
-      return false
     }
+    return true
   }
 }
 
