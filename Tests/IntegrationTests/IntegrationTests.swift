@@ -34,7 +34,7 @@ import Testing
 
       let iterations = 100
       print("Starting concurrent requests stress test for (\(iterations) iterations)...")
-      for i in 1...iterations {
+      for _ in 1...iterations {
         await runOnce()
         // Give it a tiny sleep to allow concurrent scheduling
         try? await Task.sleep(for: .milliseconds(10))
