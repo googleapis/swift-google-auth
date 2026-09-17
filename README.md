@@ -120,7 +120,7 @@ Google Cloud Swift client libraries accept credentials via `ClientOptions`:
 
 ```swift
 import GoogleAuth
-import GoogleCloudGax
+import GoogleGax
 
 let credentials = try Credentials(configuration: .apiKey("YOUR_API_KEY"))
 let clientOptions = ClientOptions().with {

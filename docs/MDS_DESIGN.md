@@ -68,7 +68,7 @@ The package-internal credential struct.
 
 -   Exposes a configuration initializer directly without a separate
     configuration struct.
--   Conforms to `CredentialsProvider` to be consumed by `GoogleCloudGax`.
+-   Conforms to `CredentialsProvider` to be consumed by `GoogleGax`.
 
 ### `MDSAccessTokenProvider`
 

@@ -252,7 +252,7 @@ Each credentials source delegates actual token storage and refreshing to a share
 
 To simplify request dispatching, JSON decoding, and error handling across our
 token providers while keeping `GoogleAuth` completely isolated from
-`GoogleCloudGax`, we implement a lightweight, internal `AuthHTTPClient`.
+`GoogleGax`, we implement a lightweight, internal `AuthHTTPClient`.
 
 This internal client encapsulates the following networking policies:
 
@@ -263,7 +263,7 @@ This internal client encapsulates the following networking policies:
 - **Easier Mocking**: implement our own HTTPClientProtocol to mock `HTTPClient`.
 - **Acyclic Boundary Safety**: Performs raw network queries directly via
     `AsyncHTTPClient.HTTPClient`, ensuring `GoogleAuth` remains independent
-    of `GoogleCloudGax`.
+    of `GoogleGax`.
 - **Generic Decoding**: Decodes generic JSON responses using a default
     `JSONDecoder` configured with a `.convertFromSnakeCase` key decoding
     strategy.
