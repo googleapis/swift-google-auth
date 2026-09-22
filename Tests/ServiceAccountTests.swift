@@ -84,8 +84,7 @@ struct ServiceAccountTests {
     let headers = try await credentials.headers()
 
     #expect(headers.count == 1)
-    #expect(headers[0].0 == "Authorization")
-    #expect(headers[0].1.hasPrefix("Bearer "))
+    #expect(headers["Authorization"]?.hasPrefix("Bearer ") == true)
   }
 
   @Test("Service Account Credentials injects custom billing quota project header")
@@ -96,8 +95,8 @@ struct ServiceAccountTests {
     let headers = try await credentials.headers()
 
     #expect(headers.count == 2)
-    #expect(headers.contains { $0.0 == "Authorization" && $0.1.hasPrefix("Bearer ") })
-    #expect(headers.contains { $0.0 == "x-goog-user-project" && $0.1 == "quota-proj-123" })
+    #expect(headers["Authorization"]?.hasPrefix("Bearer ") == true)
+    #expect(headers["x-goog-user-project"] == "quota-proj-123")
   }
 
   @Test(
@@ -160,9 +159,7 @@ struct ServiceAccountTests {
     let credentials = try ServiceAccountCredentials(keyJSON: mockKeyJSON)
     let headers = try await credentials.headers()
 
-    guard
-      let token = headers.first(where: { $0.0 == "Authorization" })?.1.replacingOccurrences(
-        of: "Bearer ", with: "")
+    guard let token = headers["Authorization"]?.replacingOccurrences(of: "Bearer ", with: "")
     else {
       Issue.record("Authorization header missing")
       return
@@ -276,9 +273,7 @@ struct ServiceAccountTests {
       keyJSON: mockKeyJSON, accessSpecifier: .audience(customAud))
     let headers = try await credentials.headers()
 
-    guard
-      let token = headers.first(where: { $0.0 == "Authorization" })?.1.replacingOccurrences(
-        of: "Bearer ", with: "")
+    guard let token = headers["Authorization"]?.replacingOccurrences(of: "Bearer ", with: "")
     else {
       Issue.record("Authorization header missing")
       return
@@ -304,9 +299,7 @@ struct ServiceAccountTests {
       keyJSON: mockKeyJSON, accessSpecifier: .scopes(["scopeA", "scopeB"]))
     let headers = try await credentials.headers()
 
-    guard
-      let token = headers.first(where: { $0.0 == "Authorization" })?.1.replacingOccurrences(
-        of: "Bearer ", with: "")
+    guard let token = headers["Authorization"]?.replacingOccurrences(of: "Bearer ", with: "")
     else {
       Issue.record("Authorization header missing")
       return
