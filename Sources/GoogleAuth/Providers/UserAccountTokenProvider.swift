@@ -48,7 +48,7 @@ struct UserAccountTokenProvider: TokenProvider {
   /// - Throws: An `AuthHTTPError` or network error if the token endpoint cannot be reached or rejects the request.
   @concurrent
   func fetchToken() async throws -> Token {
-    let scopesStr = scopes?.joined(separator: " ")
+    let scopesStr = scopes.flatMap { $0.isEmpty ? nil : $0.joined(separator: " ") }
 
     let requestBody = Oauth2RefreshRequest(
       grantType: "refresh_token",
