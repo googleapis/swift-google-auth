@@ -91,7 +91,7 @@ struct AuthHTTPClient: Sendable {
   let inner: any HTTPClientProtocol
 
   /// Initializes the client with the default asynchronous HTTP client configuration.
-  public init() {
+  init() {
     self.inner = HTTPClientHolder()
   }
 
