@@ -20,7 +20,6 @@
 /// service emulators that do not enforce authentication.
 struct AnonymousCredentials: CredentialsProvider {
   func headers() async throws -> AuthHeaders {
-    // Dummy empty implementation for skeleton phase
     return []
   }
 }
