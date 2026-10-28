@@ -761,6 +761,18 @@ import Testing
     )
   }
 
+  /// Verifies that initializing `MDSCredentials` does not eagerly query the metadata server
+  /// before `headers()` is called (`MockHTTPClient([])` asserts on `deinit` that no unexpected
+  /// requests were made).
+  @Test func mdsCredentialsInitDoesNotMakeNetworkRequests() async throws {
+    let mock = MockHTTPClient([])
+    let client = AuthHTTPClient(mock: mock)
+    let provider = MDSCredentials(client: client, environment: [:])
+
+    await Task.yield()
+    _ = provider
+  }
+
   static func checkRequest(
     _ request: HTTPClientRequest, sourceLocation: SourceLocation = #_sourceLocation
   ) {
