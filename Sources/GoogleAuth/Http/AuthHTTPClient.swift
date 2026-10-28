@@ -123,7 +123,7 @@ struct AuthHTTPClient: Sendable {
 
       do {
         return try self.makeDecoder().decode(T.self, from: Data(buffer: buffer))
-      } catch let error as DecodingError {
+      } catch {
         throw AuthHTTPError.decodingError(error: error)
       }
     }
@@ -196,7 +196,7 @@ struct AuthHTTPClient: Sendable {
 
       do {
         return try self.makeDecoder().decode(Response.self, from: recvBuffer)
-      } catch let error as DecodingError {
+      } catch {
         throw AuthHTTPError.decodingError(error: error)
       }
     }
@@ -233,7 +233,7 @@ struct AuthHTTPClient: Sendable {
 
       do {
         return try self.makeDecoder().decode(Response.self, from: Data(buffer: buffer))
-      } catch let error as DecodingError {
+      } catch {
         throw AuthHTTPError.decodingError(error: error)
       }
     }
